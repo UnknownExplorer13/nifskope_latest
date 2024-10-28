@@ -1258,12 +1258,13 @@ bool Renderer::setupProgramCE2( const NifModel * nif, Program * prog, Shape * me
 			textureReplModes = textureReplModes >> 2;
 			const CE2Material::UVStream *	uvStream = layer->uvStream;
 			if ( j == 0 ) {
-				if ( (scene->hasOption(Scene::DoLighting) && scene->hasVisMode(Scene::VisNormalsOnly)) || useErrorColor ) {
+				if ( (scene->hasVisMode(Scene::VisNormalsOnly) && scene->hasOption(Scene::DoLighting)) || useErrorColor ) {
 					texturePath = &emptyTexturePath;
 					textureReplacement = ( useErrorColor ? 0xFFFF00FFU : 0xFFFFFFFFU );
 					textureReplacementMode = 1;
-				} else if ( !texturePath->empty() && !textureReplacementMode && scene->hasOption(Scene::DoErrorColor) ) {
-					textureReplacement = 0xFFFF00FFU;
+				} else if ( !texturePath->empty() && !textureReplacementMode
+							&& ( scene->options & (Scene::DoTexturing | Scene::DoErrorColor) ) != Scene::DoTexturing ) {
+					textureReplacement = ( ( scene->options & Scene::DoTexturing ) ? 0xFFFF00FFU : 0xFFFFFFFFU );
 					textureReplacementMode = 1;
 				}
 			} else if ( j == 1 && !scene->hasOption(Scene::DoLighting) ) {
