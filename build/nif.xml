@@ -7238,6 +7238,7 @@
         <field name="Terrain Threshold Falloff" type="float" cond="Shader Flags 2 #BITAND# 0x01000000" />
         <field name="Terrain Tiling Distance" type="float" cond="Shader Flags 2 #BITAND# 0x01000000" />
         <field name="Terrain Rotation Angle" type="float" cond="Shader Flags 2 #BITAND# 0x01000000" />
+        <field name="Is Modified" type="bool" />
     </struct>
 
     <niobject name="BSLightingShaderProperty" inherit="BSShaderProperty" module="BSMain" versions="#SKY_AND_LATER#">
@@ -7371,6 +7372,7 @@
         <field name="Adaptive Emissive Exposure Offset" type="float" />
         <field name="Adaptive Emissive Exposure Min" type="float" />
         <field name="Adaptive Emissive Exposure Max" type="float" />
+        <field name="Is Modified" type="bool" />
     </struct>
 
     <niobject name="BSEffectShaderProperty" inherit="BSShaderProperty" module="BSMain" versions="#SKY_AND_LATER#">

@@ -1,5 +1,7 @@
  == CHANGELOG ==
 
+* Implemented support for editing and saving Fallout 76 materials.
+
 #### NifSkope-2.0.dev9-20241028
 
 * Converting Starfield geometry to external mesh files can now use a custom sub-directory under 'geometries'. This can be configured in the general settings under NIF, and if the name is not empty, exported mesh paths will be in the format 'geometries/SUBDIR/SHA1.mesh', and the full hash (40 characters) will be used as the base name of the file.

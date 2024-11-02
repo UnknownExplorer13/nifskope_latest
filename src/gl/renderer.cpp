@@ -1691,7 +1691,7 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 				prog->uniSampler( bsprop, SAMP_LIGHTING, 7, texunit, lighting, clamp );
 				prog->uni1i( HAS_MAP_SPEC, int(!bsprop->fileName( 7 ).isEmpty()) );
 				bool	glassEnabled = false;
-				if ( mat && typeid( *mat ) == typeid( EffectMaterial ) )
+				if ( mat && mat->isEffectMaterial() )
 					glassEnabled = static_cast< EffectMaterial * >( mat )->bGlassEnabled;
 				prog->uni1b( "isGlass", glassEnabled );
 			}
