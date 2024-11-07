@@ -655,7 +655,7 @@ void main()
 		ambient *= (vec3(1.0) - f0) * fDiffEnv;
 	}
 	float	ao = pbrMap.b;
-	float	specOcc = max( ( ao - 1.0 ) / ( NdotV * 0.5 + 0.5 ) + 1.0, 0.0 );
+	float	specOcc = max( ( ao - 1.0 ) * ( ( NdotV * 1.125 - 2.625 ) * NdotV + 2.5 ) + 1.0, 0.0 );
 	refl *= f * envLUT.g;
 
 	// Diffuse
