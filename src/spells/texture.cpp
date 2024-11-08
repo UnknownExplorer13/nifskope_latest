@@ -201,7 +201,9 @@ public:
 			return true;
 		else if ( nif->isNiBlock( iBlock, "TileShaderProperty" ) && itemName == "File Name" )
 			return true;
-		else if ( nif->getBSVersion() >= 151 && ( itemName == "Path" || itemName.startsWith( QLatin1StringView( "Texture " ) ) )
+		else if ( nif->getBSVersion() >= 151
+					&& ( itemName == "Path"
+						|| ( itemName.back().isDigit() && itemName.startsWith( QLatin1StringView( "Texture " ) ) ) )
 					&& nif->blockInherits( iBlock, "BSShaderProperty" ) )
 			return true;
 
@@ -230,7 +232,7 @@ public:
 			iFile = idx;
 		} else if ( nif->getBSVersion() >= 151 && ( i->name() == "Path" || i->name().startsWith( QLatin1StringView( "Texture " ) ) )
 					&& nif->blockInherits( iBlock, "BSShaderProperty" ) ) {
-			iFile = idx;
+			iFile = ( nif->getBSVersion() < 170 || i->name() == "Path" ? idx : nif->getIndex( i, "Path" ) );
 			isMaterialFile = true;
 		}
 
