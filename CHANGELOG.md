@@ -2,6 +2,8 @@
 
 * Implemented support for editing and saving Fallout 76 materials.
 * Starfield and Fallout 76 shading fixes.
+* Optimizations to the texture and material browsers, and to PBR cube map filtering and loading Radiance HDR format files.
+* Fixed the 'Texture/Choose' spell being incorrectly applicable to items that are not texture paths, and the spell can now also be used on Starfield texture set items without expanding the structure.
 * Fixed error on BSFaceFX and BoneModifierExtra blocks.
 
 #### NifSkope-2.0.dev9-20241028
