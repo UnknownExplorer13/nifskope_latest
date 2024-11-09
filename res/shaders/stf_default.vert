@@ -117,7 +117,7 @@ void main( void )
 		reflMatrix = worldMatrix;
 	}
 
-	reflMatrix = rotateEnv(reflMatrix, gl_LightSource[0].position.w * 3.14159265);
+	reflMatrix = rotateEnv(reflMatrix, gl_LightSource[0].position.w * 3.14159265) * gl_ModelViewMatrixInverse;
 
 	if (gl_ProjectionMatrix[3][3] == 1.0)
 		v = vec3(0.0, 0.0, -1.0);	// orthographic view

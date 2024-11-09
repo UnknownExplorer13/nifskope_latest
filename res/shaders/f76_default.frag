@@ -69,7 +69,7 @@ vec3 LightingFuncGGX_REF(float NdotL, float NdotH, float NdotV, float roughness)
 	// D (GGX normal distribution)
 	float alphaSqr = alpha * alpha;
 	float denom = NdotH * NdotH;
-	denom = ( denom * alphaSqr ) + max( 1.0 - denom, 0.0 );
+	denom = ( denom * alphaSqr ) + ( 1.0 - denom );
 	float D = alphaSqr / ( denom * denom * 4.0 );
 	// no pi because BRDF -> lighting
 	// G (remapped hotness, see Unreal Shading)
@@ -137,12 +137,12 @@ void main(void)
 
 	float NdotL = dot(normal, L);
 	float NdotL0 = max(NdotL, 0.0);
-	float NdotH = max(dot(normal, H), 0.0);
+	float NdotH = clamp(dot(normal, H), 0.0, 1.0);
 	float NdotV = abs(dot(normal, V));
 	float LdotH = dot(L, H);
 
-	vec3	reflectedWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(R, 0.0))) * vec3(1.0, 1.0, -1.0);
-	vec3	normalWS = vec3(reflMatrix * (gl_ModelViewMatrixInverse * vec4(normal, 0.0))) * vec3(1.0, 1.0, -1.0);
+	vec3	reflectedWS = vec3( reflMatrix * vec4(R, 0.0) );
+	vec3	normalWS = vec3( reflMatrix * vec4(normal, 0.0) );
 
 	vec3 albedo = baseMap.rgb * C.rgb;
 	if ( greyscaleColor ) {
