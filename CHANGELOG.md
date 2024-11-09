@@ -1,6 +1,7 @@
  == CHANGELOG ==
 
 * Implemented support for editing and saving Fallout 76 materials.
+* New spell for browsing Starfield .mesh files, it is available when right clicking on a 'Mesh Path' item. Note that mesh paths in the format used by the base game are excluded from the file list, so the spell is only useful for browsing new meshes with human readable paths. The Update Bounds spell is automatically cast on the parent block if the path is changed.
 * Starfield and Fallout 76 shading fixes.
 * Optimizations to the texture and material browsers, and to PBR cube map filtering and loading Radiance HDR format files.
 * Fixed the 'Texture/Choose' spell being incorrectly applicable to items that are not texture paths, and the spell can now also be used on Starfield texture set items without expanding the structure.
