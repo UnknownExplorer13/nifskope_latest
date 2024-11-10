@@ -1,7 +1,5 @@
  == CHANGELOG ==
 
-#### NifSkope-2.0.dev9-20241110
-
 * Implemented support for editing and saving Fallout 76 materials.
 * New spell for browsing Starfield .mesh files, it is available when right clicking on a 'Mesh Path' item. Note that mesh paths in the format used by the base game are excluded from the file list, so the spell is only useful for browsing new meshes with human readable paths. The Update Bounds spell is automatically cast on the parent block if the path is changed.
 * The Texture/Info spell can be used on any string item that ends with ".dds", and it opens a dialog showing information and a preview of the texture.
