@@ -10,6 +10,7 @@
 #include "model/nifmodel.h"
 
 #include "lib/nvtristripwrapper.h"
+#include "libfo76utils/src/ddstxt16.hpp"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -887,44 +888,163 @@ public:
 
 REGISTER_SPELL( spMultiApplyMode )
 
-//! Debug function - display information about a texture
+
+//! Display information about a texture
 class spTexInfo final : public Spell
 {
 public:
 	QString name() const override final { return Spell::tr( "Info" ); }
 	QString page() const override final { return Spell::tr( "Texture" ); }
+	bool constant() const override final { return true; }
 
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
-		QModelIndex iBlock = nif->getBlockIndex( index );
+		if ( !index.isValid() )
+			return false;
+		const NifItem *	item = nif->getItem( index );
+		if ( !item )
+			return false;
 
+		QModelIndex iBlock = nif->getBlockIndex( item );
 		if ( nif->isNiBlock( iBlock, "NiSourceTexture" ) )
 			return true;
 
-		return false;
+		return ( item->isString()
+				&& nif->get<QString>( item ).endsWith( QLatin1StringView( ".dds" ), Qt::CaseInsensitive ) );
 	}
+
+	static void showTexture( NifModel * nif, const QString & filename );
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
 	{
-		TexCache * tex = new TexCache();
-		tex->setNifFolder( nif->getFolder() );
-		int isExternal = nif->get<int>( index, "Use External" );
+		const NifItem *	item = nif->getItem( index );
+		if ( !item )
+			return index;
 
-		if ( isExternal ) {
-			QString filename = nif->get<QString>( index, "File Name" );
-			tex->bind( filename );
-		} else {
-			tex->bind( index );
+		QString	filename;
+
+		if ( item->isString() ) {
+			filename = nif->get<QString>( item );
+			if ( filename.endsWith( QLatin1StringView( ".dds" ), Qt::CaseInsensitive ) ) {
+				showTexture( nif, filename );
+				return index;
+			}
 		}
 
-		qDebug() << tex->info( index );
-		return QModelIndex();
+		QModelIndex	iBlock = nif->getBlockIndex( item );
+		int	isExternal = nif->get<int>( iBlock, "Use External" );
+		if ( isExternal ) {
+			filename = nif->get<QString>( iBlock, "File Name" );
+			if ( filename.isEmpty() )
+				return index;
+		}
+
+		TexCache	tex;
+		tex.setNifFolder( nif->getFolder() );
+
+		if ( isExternal )
+			tex.bind( filename );
+		else
+			tex.bind( iBlock );
+
+		QMessageBox::information( nullptr, tr( "Texture information" ), tex.info( iBlock ) );
+		return index;
 	}
 };
 
-#ifndef QT_NO_DEBUG
+void spTexInfo::showTexture( NifModel * nif, const QString & filename )
+{
+	try {
+		QString	fullPath = nif->findResourceFile( filename, "textures/", ".dds" );
+		if ( fullPath.isEmpty() )
+			return;
+		QByteArray	textureData;
+		if ( !nif->getResourceFile( textureData, fullPath, nullptr, nullptr ) )
+			return;
+		DDSTexture16	t( reinterpret_cast< const unsigned char * >( textureData.constData() ),
+							size_t( textureData.size() ), 0, true );
+
+		QDialog	dlg;
+
+		int	w = t.getWidth();
+		int	h = t.getHeight();
+		double	r = dlg.devicePixelRatioF();
+		double	scale = ( 512.0 * r ) / double( std::max( w, h ) );
+		w = std::max< int >( int( double( w ) * scale + 0.5 ), 1 );
+		h = std::max< int >( int( double( h ) * scale + 0.5 ), 1 );
+		float	m = std::min( std::max( float( std::log2( scale ) * -1.0 ), 0.0f ), 16.0f );
+		bool	isNormalMap = ( t.getChannelCount() == 2 && !fullPath.endsWith( QLatin1StringView( "_s.dds" ) ) );
+		bool	isSigned = false;
+		switch ( t.getDXGIFormat() ) {
+		case 0x0D:				// DXGI_FORMAT_R16G16B16A16_SNORM
+		case 0x1F:				// DXGI_FORMAT_R8G8B8A8_SNORM
+		case 0x25:				// DXGI_FORMAT_R16G16_SNORM
+		case 0x33:				// DXGI_FORMAT_R8G8_SNORM
+		case 0x3A:				// DXGI_FORMAT_R16_SNORM
+		case 0x3F:				// DXGI_FORMAT_R8_SNORM
+		case 0x51:				// DXGI_FORMAT_BC4_SNORM
+		case 0x54:				// DXGI_FORMAT_BC5_SNORM
+		case 0x60:				// DXGI_FORMAT_BC6H_SF16
+			isSigned = true;
+			break;
+		}
+		std::vector< std::uint32_t >	scaledImage( size_t( w ) * size_t( h ) );
+		float	uScale = 1.0f / float( w );
+		float	vScale = 1.0f / float( h );
+		float	uOffset = uScale * 0.5f;
+		float	vOffset = vScale * 0.5f;
+		for ( int y = 0; y < h; y++ ) {
+			float	yc = float( y ) * vScale + vOffset;
+			std::uint32_t *	d = scaledImage.data() + ( size_t( y ) * size_t( w ) );
+			for ( int x = 0; x < w; x++ ) {
+				float	xc = float( x ) * uScale + uOffset;
+				FloatVector4	c( t.getPixelTC( xc, yc, m ) );
+				if ( isSigned )
+					c = c * 0.5f + 0.5f;
+				if ( isNormalMap )
+					c[2] = float( std::sqrt( std::max( 0.25f - ( c - 0.5f ).dotProduct2( c - 0.5f ), 0.0f ) ) + 0.5f );
+				d[x] = std::uint32_t( c.shuffleValues( 0xC6 ) * 255.0f );	// RGBA -> BGRA
+			}
+		}
+		QImage	img( reinterpret_cast< const unsigned char * >( scaledImage.data() ), w, h, QImage::Format_ARGB32 );
+		QPixmap	p( QPixmap::fromImage( img ) );
+		p.setDevicePixelRatio( r );
+
+		QLabel *	lb[19];
+		lb[0] = new QLabel( tr( "Texture information" ), &dlg );
+		lb[1] = new QLabel( QString(), &dlg );
+		lb[2] = new QLabel( tr( "File name" ), &dlg );
+		lb[3] = new QLabel( filename, &dlg );
+		lb[4] = new QLabel( tr( "Full path" ), &dlg );
+		lb[5] = new QLabel( fullPath, &dlg );
+		lb[6] = new QLabel( tr( "File size" ), &dlg );
+		lb[7] = new QLabel( QString::number( textureData.size() ), &dlg );
+		lb[8] = new QLabel( tr( "Width" ), &dlg );
+		lb[9] = new QLabel( QString::number( t.getWidth() ), &dlg );
+		lb[10] = new QLabel( tr( "Height" ), &dlg );
+		lb[11] = new QLabel( QString::number( t.getHeight() ), &dlg );
+		lb[12] = new QLabel( tr( "Mipmaps" ), &dlg );
+		lb[13] = new QLabel( QString::number( t.getMaxMipLevel() + 1 ), &dlg );
+		lb[14] = new QLabel( tr( "Num textures" ), &dlg );
+		lb[15] = new QLabel( QString::number( t.getTextureCount() ), &dlg );
+		lb[16] = new QLabel( tr( "Pixel format" ), &dlg );
+		lb[17] = new QLabel( QString( t.getFormatName() ), &dlg );
+		lb[18] = new QLabel( &dlg );
+		lb[18]->setPixmap( p );
+		QGridLayout *	grid = new QGridLayout;
+		dlg.setLayout( grid );
+		for ( int i = 0; i < 19; i++ ) {
+			int	y = ( i < 2 ? i : ( i + 2 ) >> 1 );
+			int	x = ( i + int( i < 2 ) ) & 1;
+			grid->addWidget( lb[i], y, x, 1, ( i == 1 || i == 18 ? 3 : ( i & 1 ) + 1 ) );
+		}
+		dlg.exec();
+	} catch ( FO76UtilsError & ) {
+	}
+}
+
 REGISTER_SPELL( spTexInfo )
-#endif
+
 
 //! Export a packed NiPixelData texture
 class spExportTexture final : public Spell
