@@ -8,6 +8,7 @@
 * The Texture/Info spell is now applicable to any string item that ends with ".dds", and it opens a dialog showing information and a preview of the texture.
 * Implemented Transform/Apply for Starfield (internal geometry only).
 * Starfield and Fallout 76 shading fixes.
+* Experimental support for importing glTF models that use anisotropic scaling. Non-uniform scale factors are applied to the rotation matrix, so the model should be fixed manually by applying the transform and recalculating normals and tangents.
 * Optimizations to the texture and material browsers, and to PBR cube map filtering and loading Radiance HDR format files.
 * Fixed the 'Texture/Choose' spell being incorrectly applicable to items that are not texture paths, and the spell can now also be used on Starfield texture set items without expanding the structure.
 * Fixed error on BSFaceFX and BoneModifierExtra blocks.
