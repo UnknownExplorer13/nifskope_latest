@@ -226,7 +226,7 @@ varying vec4 C;
 varying vec4 D;
 
 varying mat3 btnMatrix;
-varying mat4 reflMatrix;
+varying mat3 reflMatrix;
 
 vec3 ViewDir_norm = normalize( ViewDir );
 mat3 btnMatrix_norm = mat3( normalize( btnMatrix[0] ), normalize( btnMatrix[1] ), normalize( btnMatrix[2] ) );
@@ -612,8 +612,8 @@ void main()
 	float	NdotV = abs(dot(normal, V));
 	float	LdotH = dot(L, H);
 
-	vec3	reflectedWS = vec3( reflMatrix * vec4(R, 0.0) );
-	vec3	normalWS = vec3( reflMatrix * vec4(normal, 0.0) );
+	vec3	reflectedWS = reflMatrix * R;
+	vec3	normalWS = reflMatrix * normal;
 
 	vec3	f0 = mix(vec3(0.04), baseMap, pbrMap.g);
 	vec3	albedo = baseMap * (1.0 - pbrMap.g);

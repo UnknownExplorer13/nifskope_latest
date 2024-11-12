@@ -226,7 +226,7 @@ in vec4 C;
 in vec4 D;
 
 in mat3 btnMatrix;
-in mat4 reflMatrix;
+in mat3 reflMatrix;
 
 out vec4 fragColor;
 
@@ -620,8 +620,8 @@ void main()
 	float	NdotV = abs(dot(normal, V));
 	float	LdotH = dot(L, H);
 
-	vec3	reflectedWS = vec3( reflMatrix * vec4(R, 0.0) );
-	vec3	normalWS = vec3( reflMatrix * vec4(normal, 0.0) );
+	vec3	reflectedWS = reflMatrix * R;
+	vec3	normalWS = reflMatrix * normal;
 
 	vec3	f0 = mix(vec3(0.04), baseMap, pbrMap.g);
 	vec3	albedo = baseMap * (1.0 - pbrMap.g);
