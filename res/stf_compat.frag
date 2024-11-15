@@ -381,7 +381,9 @@ void main()
 	vec3	emissive = vec3(0.0);
 	vec3	transmissive = vec3(0.0);
 	float	falloffLayerMask = float(lm.layeredEdgeFalloff.flags);
-	int	numLayers = int( min( lm.numLayers, 6 ) );
+	int	numLayers = lm.numLayers;
+	if ( numLayers > 6 )
+		numLayers = 6;
 
 	for ( int i = 0; i < numLayers; i++ ) {
 		vec3	layerBaseMap = vec3(0.0);
