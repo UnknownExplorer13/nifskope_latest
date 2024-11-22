@@ -1,5 +1,8 @@
  == CHANGELOG ==
 
+* Implemented rendering bhkCylinderShape (fix to issue https://github.com/hexabits/nifskope/issues/37).
+* Fixed the block types NiMeshPSysData and NiMeshParticleSystem being incorrectly filtered out by 'Block/Insert'.
+
 #### NifSkope-2.0.dev9-20241112
 
 * Implemented support for editing and saving Fallout 76 materials.
