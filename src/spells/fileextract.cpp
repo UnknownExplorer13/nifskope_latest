@@ -365,7 +365,7 @@ QModelIndex spExtractAllMaterials::cast( NifModel * nif, const QModelIndex & ind
 			try {
 				(void) materials->loadMaterial( i );
 				materials->getJSONMaterial( matFileData, i );
-			} catch ( FO76UtilsError & e ) {
+			} catch ( NifSkopeError & e ) {
 				QMessageBox::critical( nullptr, "NifSkope error", QString( "Error loading material '%1': %2" ).arg( QLatin1String( i.data(), qsizetype(i.length()) ) ).arg( e.what() ) );
 			}
 			if ( !matFileData.empty() ) {
@@ -560,7 +560,7 @@ bool spMeshFileImport::processItem( NifModel * nif, NifItem * item )
 				continue;
 			if ( !nif->getResourceFile( meshData[l], meshPath, "geometries/", ".mesh" ) ) {
 				if ( nif->getBatchProcessingMode() )
-					throw FO76UtilsError( "failed to load mesh file '%s'", meshPath.toStdString().c_str() );
+					throw NifSkopeError( "failed to load mesh file '%s'", meshPath.toStdString().c_str() );
 				else
 					QMessageBox::critical( nullptr, "NifSkope error", QString("Failed to load mesh file '%1'" ).arg( meshPath ) );
 				return false;

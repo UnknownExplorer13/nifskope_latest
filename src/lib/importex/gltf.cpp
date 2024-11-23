@@ -634,7 +634,7 @@ DDSTexture16 * ExportGltfMaterials::loadTexture( const std::string_view & txtPat
 			return nullptr;
 		t = new DDSTexture16(
 				reinterpret_cast< const unsigned char * >( buf.constData() ), size_t( buf.size() ), mipLevel, true );
-	} catch ( FO76UtilsError & ) {
+	} catch ( NifSkopeError & ) {
 		delete t;
 		t = nullptr;
 	}
@@ -835,7 +835,7 @@ void ExportGltfMaterials::exportMaterial( tinygltf::Material & mat, const std::s
 	const CE2Material *	material = nullptr;
 	try {
 		material = materials->loadMaterial( matPath );
-	} catch ( FO76UtilsError & ) {
+	} catch ( NifSkopeError & ) {
 	}
 	if ( !material )
 		return;

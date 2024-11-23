@@ -1039,7 +1039,7 @@ void spTexInfo::showTexture( NifModel * nif, const QString & filename )
 			grid->addWidget( lb[i], y, x, 1, ( i == 1 || i == 18 ? 3 : ( i & 1 ) + 1 ) );
 		}
 		dlg.exec();
-	} catch ( FO76UtilsError & ) {
+	} catch ( NifSkopeError & ) {
 	}
 }
 
