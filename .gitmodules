@@ -10,3 +10,6 @@
 [submodule "build/docsys/nifxml"]
 	path = build/docsys/nifxml
 	url = https://github.com/niftools/nifxml.git
+[submodule "lib/meshoptimizer"]
+	path = lib/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
