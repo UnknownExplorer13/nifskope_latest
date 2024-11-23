@@ -9,7 +9,7 @@
 
 #include "fp32vec4.hpp"
 #include "io/MeshFile.h"
-#include "meshoptimizer/meshoptimizer.h"
+#include "meshoptimizer/src/meshoptimizer.h"
 #include "meshlet.h"
 #include "ui/widgets/filebrowser.h"
 
@@ -1698,13 +1698,13 @@ void spGenerateMeshlets::updateMeshlets(
 			size_t	triangleCnt = size_t( meshFile.triangles.size() );
 			auto	iTriangles = nif->getIndex( iMeshData, "Triangles" );
 			if ( !iTriangles.isValid() || size_t( nif->rowCount( iTriangles ) ) != triangleCnt )
-				throw FO76UtilsError( "invalid triangle data" );
+				throw NifSkopeError( "invalid triangle data" );
 			if ( meshletAlgorithm < 4 ) {
 				std::vector< unsigned int >	indices( triangleCnt * 3 );
 				size_t	k = 0;
 				for ( const auto & t : meshFile.triangles ) {
 					if ( t[0] >= vertexCnt || t[1] >= vertexCnt || t[2] >= vertexCnt )
-						throw FO76UtilsError( "vertex number is out of range" );
+						throw NifSkopeError( "vertex number is out of range" );
 					indices[k] = t[0];
 					indices[k + 1] = t[1];
 					indices[k + 2] = t[2];
@@ -1745,7 +1745,7 @@ void spGenerateMeshlets::updateMeshlets(
 					for ( ; n; n--, k++, p = p + 3 ) {
 						auto	iTriangle = nif->getIndex( iTriangles, int(k) );
 						if ( !iTriangle.isValid() )
-							throw FO76UtilsError( "triangle number is out of range" );
+							throw NifSkopeError( "triangle number is out of range" );
 						quint16	v0 = quint16( v[p[0]] );
 						quint16	v1 = quint16( v[p[1]] );
 						quint16	v2 = quint16( v[p[2]] );
@@ -1760,7 +1760,7 @@ void spGenerateMeshlets::updateMeshlets(
 													meshFile.positions.data(), vertexCnt,
 													tmpMeshlets, newIndices, 96, 128 );
 				if ( err ) {
-					throw FO76UtilsError( err == ERANGE ? "vertex number is out of range"
+					throw NifSkopeError( err == ERANGE ? "vertex number is out of range"
 														: ( err == ENOMEM ? "std::bad_alloc" : "invalid argument" ) );
 				}
 				meshletData.resize( tmpMeshlets.size() );
