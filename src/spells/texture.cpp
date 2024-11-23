@@ -570,10 +570,10 @@ REGISTER_SPELL( spAddDecal3Map )
 //! Wrap a value between 0 and 1
 #define wrap01f( X ) ( X > 1 ? X - floor( X ) : X < 0 ? X - floor( X ) : X )
 
-//! Saves the UV layout as a TGA
-class spTextureTemplate final : public Spell
+//! Saves the UV layout as a PNG or BMP
+class spTextureLayout final : public Spell
 {
-	QString name() const override final { return Spell::tr( "Export Template" ); }
+	QString name() const override final { return Spell::tr( "Export UV Layout" ); }
 	QString page() const override final { return Spell::tr( "Texture" ); }
 	bool constant() const override final { return true; }
 
@@ -592,10 +592,12 @@ class spTextureTemplate final : public Spell
 		if ( nif->rowCount( iUVs ) <= 0 && nif->getBSVersion() < 100 )
 			return index;
 
-		// fire up a dialog to set the user parameters
+		// Fire up a dialog to set the user parameters
 		QDialog dlg;
 		QGridLayout * lay = new QGridLayout;
 		dlg.setLayout( lay );
+		dlg.setWindowTitle( "Export UV Layout" );
+		dlg.setMinimumSize( 227, 240 );
 
 		FileSelector * file = new FileSelector( FileSelector::SaveFile, "File", QBoxLayout::RightToLeft );
 		file->setFilter( { "", "PNG (*.png)", "BMP (*.bmp)" } );
@@ -613,54 +615,80 @@ class spTextureTemplate final : public Spell
 		lay->addWidget( set, 2, 1 );
 
 		for ( int i = 0; i < nif->rowCount( iUVs ); i++ )
-			set->addItem( QString( "set %1" ).arg( i ) );
+			set->addItem( QString( "Set %1" ).arg( i ) );
 
 		lay->addWidget( new QLabel( "Wrap Mode" ), 3, 0 );
 		QComboBox * wrap = new QComboBox;
 		lay->addWidget( wrap, 3, 1 );
-		wrap->addItem( "wrap" );
-		wrap->addItem( "clamp" );
+		wrap->addItem( "Wrap" );
+		wrap->addItem( "Clamp" );
 
 		lay->addWidget( new QLabel( "Antialias" ), 4, 0 );
 		QCheckBox * antialias = new QCheckBox;
 		lay->addWidget( antialias, 4, 1 );
 
-		lay->addWidget( new QLabel( "Wire Color" ), 5, 0 );
+		lay->addWidget( new QLabel( "Solid Fill" ), 5, 0 );
+		QCheckBox * solidFill = new QCheckBox;
+		lay->addWidget( solidFill, 5, 1 );
+
+		lay->addWidget( new QLabel( "Wire Color" ), 6, 0 );
 		QPushButton * wireColor = new QPushButton;
-		lay->addWidget( wireColor, 5, 1 );
+		lay->addWidget( wireColor, 6, 1 );
+
+		lay->addWidget( new QLabel( "Fill Color" ), 7, 0 );
+		QPushButton * fillColor = new QPushButton;
+		lay->addWidget( fillColor, 7, 1 );
 
 		QPushButton * ok = new QPushButton( "Ok" );
 		QObject::connect( ok, &QPushButton::clicked, &dlg, &QDialog::accept );
-		lay->addWidget( ok, 6, 0, 1, 2 );
+		lay->addWidget( ok, 8, 0 );
+
+		QPushButton * cancel = new QPushButton( "Cancel" );
+		QObject::connect( cancel, &QPushButton::clicked, &dlg, &QDialog::reject );
+		lay->addWidget( cancel, 8, 1 );
 
 		QSettings settings;
 		QString keyGroup = QString( "%1/%2/%3/" ).arg( "Spells", page(), name() );
 
-		// Key formatter, avoid lots of beginGroup() and endGroup() this way
+		// Key formatter, avoids lots of beginGroup() and endGroup() this way
 		auto k = [&keyGroup]( const QString& key ) { return QString( "%1%2" ).arg( keyGroup, key ); };
 
 		wrap->setCurrentIndex( settings.value( k( "Wrap Mode" ), 0 ).toInt() );
 		size->setCurrentIndex( settings.value( k( "Image Size" ), 2 ).toInt() );
 		file->setText( settings.value( k( "File Name" ), "" ).toString() );
 		antialias->setChecked( settings.value( k( "Antialias" ), true ).toBool() );
+		solidFill->setChecked( settings.value( k( "Solid Fill" ), false ).toBool() );
 
-		QString colorARGB = settings.value( k( "Wire Color" ), "#FF000000" ).toString();
-		wireColor->setText( colorARGB );
-		QString bc = "background-color: ";
-		wireColor->setStyleSheet( bc + colorARGB );
+		QString colorARGB1 = settings.value( k( "Wire Color" ), "#FF000000" ).toString();
+		wireColor->setText( colorARGB1 );
+		QString bc1 = "background-color: ";
+		wireColor->setStyleSheet( bc1 + colorARGB1 );
 
 		QColorDialog * colorDlg = new QColorDialog;
-		QObject::connect( wireColor, &QPushButton::clicked, [&]()
-			{
-				QColor c = colorDlg->getColor( wireColor->text(), nullptr, "Wire Color", QColorDialog::ShowAlphaChannel );
+		QObject::connect( wireColor, &QPushButton::clicked, [&]() {
+			QColor c = colorDlg->getColor( wireColor->text(), nullptr, "Wire Color", QColorDialog::ShowAlphaChannel );
 
-				if ( c.isValid() ) {
-					colorARGB = c.name( QColor::NameFormat::HexArgb );
-					wireColor->setText( colorARGB );
-					wireColor->setStyleSheet( bc + colorARGB );
-				}
+			if ( c.isValid() ) {
+				colorARGB1 = c.name( QColor::NameFormat::HexArgb );
+				wireColor->setText( colorARGB1 );
+				wireColor->setStyleSheet( bc1 + colorARGB1 );
 			}
-		);
+		} );
+
+		QString colorARGB2 = settings.value( k( "Fill Color" ), "#FFFFFFFF" ).toString();
+		fillColor->setText( colorARGB2 );
+		QString bc2 = "background-color: ";
+		fillColor->setStyleSheet( bc2 + colorARGB2 );
+
+		QObject::connect( fillColor, &QPushButton::clicked, [&]() {
+			QColor c = colorDlg->getColor( fillColor->text(), nullptr, "Fill Color", QColorDialog::ShowAlphaChannel );
+
+			if ( c.isValid() ) {
+				colorARGB2 = c.name( QColor::NameFormat::HexArgb );
+				fillColor->setText( colorARGB2 );
+				fillColor->setStyleSheet( bc2 + colorARGB2 );
+			}
+		} );
 
 		if ( dlg.exec() != QDialog::Accepted )
 			return index;
@@ -669,9 +697,11 @@ class spTextureTemplate final : public Spell
 		settings.setValue( k( "Image Size" ), size->currentIndex() );
 		settings.setValue( k( "File Name" ), file->text() );
 		settings.setValue( k( "Antialias" ), antialias->isChecked() );
-		settings.setValue( k( "Wire Color" ), colorARGB );
+		settings.setValue( k( "Solid Fill" ), solidFill->isChecked() );
+		settings.setValue( k( "Wire Color" ), colorARGB1 );
+		settings.setValue( k( "Fill Color" ), colorARGB2 );
 
-		// get the selected coord set
+		// Get the selected coord set
 		QModelIndex iSet = nif->getIndex( iUVs, set->currentIndex(), 0 );
 
 		QVector<Vector2> uv;
@@ -708,7 +738,7 @@ class spTextureTemplate final : public Spell
 			uv = nif->getArray<Vector2>( iSet );
 		}
 
-		// get the triangles
+		// Get the triangles
 		QModelIndex iData = getData( nif, index );
 		QModelIndex iPoints = nif->getIndex( iData, "Points" );
 
@@ -723,7 +753,7 @@ class spTextureTemplate final : public Spell
 			tri = nif->getArray<Triangle>( nif->getIndex( getData( nif, index ), "Triangles" ) );
 		}
 
-		// render the template image
+		// Render the UV layout onto the image
 		quint16 s = size->currentText().toInt();
 
 		QImage img( s, s, QImage::Format_ARGB32 );
@@ -734,7 +764,11 @@ class spTextureTemplate final : public Spell
 		pntr.setRenderHint( QPainter::Antialiasing, antialias->isChecked() );
 		pntr.fillRect( img.rect(), QColor( 0xff, 0xff, 0xff, 0 ) );
 		//pntr.scale( s, s ); // Seems to work differently in Qt 5
-		pntr.setPen( QColor( colorARGB ) );
+		pntr.setPen( QColor( colorARGB1 ) );
+		if ( solidFill->isChecked() ) {
+			// setBrush() enables the filling of drawn polygons
+			pntr.setBrush( QColor( colorARGB2 ) );
+		}
 
 		bool wrp = wrap->currentIndex() == 0;
 
@@ -763,7 +797,7 @@ class spTextureTemplate final : public Spell
 			pntr.drawPolygon( points, 3 );
 		}
 
-		// write the file
+		// Write the file
 		QString filename = file->text();
 
 		// TODO: Fix FileSelector class so that this isn't necessary.
@@ -789,7 +823,7 @@ class spTextureTemplate final : public Spell
 	}
 };
 
-REGISTER_SPELL( spTextureTemplate )
+REGISTER_SPELL( spTextureLayout )
 
 //! Global search and replace of texturing apply modes
 class spMultiApplyMode final : public Spell
