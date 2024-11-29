@@ -519,8 +519,8 @@ void SFCubeMapCache::convertHDRToDDSThread(
   {
     int     n = yStart / cubeWidth;
     int     y = yStart % cubeWidth;
-    FloatVector4  xi_v(0.0f);
-    FloatVector4  yi_v(0.0f);
+    std::int32_t  xi_v[4];
+    std::int32_t  yi_v[4];
     FloatVector4  xf_v(0.0f);
     FloatVector4  yf_v(0.0f);
     for (int x = 0; x < cubeWidth; x++, p = p + outPixelSize)
@@ -546,13 +546,15 @@ void SFCubeMapCache::convertHDRToDDSThread(
         FloatVector4  xf = atan2NormFast(tmpX, tmpY) * 0.5f + 0.5f;
         xf = xf * float(w) - 0.5f;
         yf = yf * float(h) - 0.5f;
-        xi_v = FloatVector4(xf).floorValues();
-        yi_v = FloatVector4(yf).floorValues();
-        xf_v = xf - xi_v;
-        yf_v = yf - yi_v;
+        FloatVector4  xi = FloatVector4(xf).floorValues();
+        FloatVector4  yi = FloatVector4(yf).floorValues();
+        xi.convertToInt32(xi_v);
+        yi.convertToInt32(yi_v);
+        xf_v = xf - xi;
+        yf_v = yf - yi;
       }
-      int     x0 = int(xi_v[x & 3]);
-      int     y0 = int(yi_v[x & 3]);
+      int     x0 = xi_v[x & 3];
+      int     y0 = yi_v[x & 3];
       float   xf = xf_v[x & 3];
       float   yf = yf_v[x & 3];
       x0 = (x0 <= (w - 1) ? (x0 >= 0 ? x0 : (w - 1)) : 0);
