@@ -159,6 +159,7 @@ HEADERS += \
 	src/gl/BSMesh.h \
 	src/gl/bsshape.h \
 	src/gl/controllers.h \
+	src/gl/glcontext.hpp \
 	src/gl/glcontroller.h \
 	src/gl/glmarker.h \
 	src/gl/glmesh.h \
@@ -236,6 +237,7 @@ SOURCES += \
 	src/gl/BSMesh.cpp \
 	src/gl/bsshape.cpp \
 	src/gl/controllers.cpp \
+	src/gl/glcontext.cpp \
 	src/gl/glcontroller.cpp \
 	src/gl/glmarker.cpp \
 	src/gl/glmesh.cpp \
