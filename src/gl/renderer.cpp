@@ -213,7 +213,7 @@ QModelIndex Renderer::ConditionSingle::getIndex( const NifModel * nif, const QVe
 {
 	QString childid;
 
-	if ( blkid.startsWith( "HEADER/" ) ) {
+	if ( blkid.startsWith( QLatin1StringView("HEADER/") ) ) {
 		auto blk = blkid.remove( "HEADER/" );
 		if ( blk.contains("/") ) {
 			auto blks = blk.split( "/" );
@@ -222,7 +222,7 @@ QModelIndex Renderer::ConditionSingle::getIndex( const NifModel * nif, const QVe
 		return nif->getIndex( nif->getHeaderIndex(), blk );
 	}
 
-	int pos = blkid.indexOf( "/" );
+	int pos = blkid.indexOf( QChar('/') );
 
 	if ( pos > 0 ) {
 		childid = blkid.right( blkid.length() - pos - 1 );
@@ -242,6 +242,9 @@ QModelIndex Renderer::ConditionSingle::getIndex( const NifModel * nif, const QVe
 
 bool Renderer::ConditionSingle::eval( const NifModel * nif, const QVector<QModelIndex> & iBlocks ) const
 {
+	if ( left == "BSVersion" )
+		return compare( nif->getBSVersion(), right.toUInt( nullptr, 0 ) ) ^ invert;
+
 	QModelIndex iLeft = getIndex( nif, iBlocks, left );
 
 	if ( !iLeft.isValid() )
