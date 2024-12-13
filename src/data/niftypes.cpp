@@ -295,8 +295,8 @@ Matrix Matrix::toYUp() const
 {
 	auto m1 = Matrix();
 	auto m2 = Matrix();
-	memcpy(m1.m, m, 36);
-	memcpy(m2.m, Y_UP, 36);
+	std::memcpy(m1.m, m, sizeof(Matrix));
+	std::memcpy(m2.m, Y_UP, sizeof(Matrix));
 	return m1 * m2;
 }
 
@@ -304,8 +304,8 @@ Matrix Matrix::toZUp() const
 {
 	auto m1 = Matrix();
 	auto m2 = Matrix();
-	memcpy(m1.m, m, 36);
-	memcpy(m2.m, Z_UP, 36);
+	std::memcpy(m1.m, m, sizeof(Matrix));
+	std::memcpy(m2.m, Z_UP, sizeof(Matrix));
 	return m1 * m2;
 }
 
@@ -388,6 +388,33 @@ void Matrix4::compose( const Vector3 & trans, const Matrix & rot, const Vector3 
 		for ( int j = 0; j < 3; j++ )
 			m[i][j] = rot( j, i ) * scale[j];
 	}
+}
+
+Matrix4 Matrix4::fromFrustum( double left, double right, double bottom, double top, double nearVal, double farVal )
+{
+	Matrix4	m;
+	m.m[0][0] = float( 2.0 * nearVal / ( right - left ) );
+	m.m[0][2] = float( ( right + left ) / ( right - left ) );
+	m.m[1][1] = float( 2.0 * nearVal / ( top - bottom ) );
+	m.m[1][2] = float( ( top + bottom ) / ( top - bottom ) );
+	m.m[2][2] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
+	m.m[2][3] = float( 2.0 * nearVal * farVal / ( nearVal - farVal ) );
+	m.m[3][2] = -1.0f;
+	m.m[3][3] = 0.0f;
+	return m;
+}
+
+Matrix4 Matrix4::fromOrtho( double left, double right, double bottom, double top, double nearVal, double farVal )
+{
+	Matrix4	m;
+	m.m[0][0] = float( -2.0 / ( left - right ) );
+	m.m[0][3] = float( ( left + right ) / ( left - right ) );
+	m.m[1][1] = float( -2.0 / ( bottom - top ) );
+	m.m[1][3] = float( ( bottom + top ) / ( bottom - top ) );
+	m.m[2][2] = float( 2.0 / ( nearVal - farVal ) );
+	m.m[2][3] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
+	m.m[3][3] = 1.0f;
+	return m;
 }
 
 static bool gluInvertMatrix( const float m[16], float invOut[16] )
@@ -549,8 +576,8 @@ Matrix4 Matrix4::inverted() const
 void Quat::fromAxisAngle( Vector3 axis, float angle )
 {
 	axis.normalize();
-	float s = sin( angle / 2 );
-	wxyz[0] = cos( angle / 2 );
+	float s = std::sin( angle / 2 );
+	wxyz[0] = std::cos( angle / 2 );
 	wxyz[1] = s * axis[0];
 	wxyz[2] = s * axis[1];
 	wxyz[3] = s * axis[2];
@@ -561,11 +588,11 @@ void Quat::toAxisAngle( Vector3 & axis, float & angle ) const
 	float squaredLength = wxyz[1] * wxyz[1] + wxyz[2] * wxyz[2] + wxyz[3] * wxyz[3];
 
 	if ( squaredLength > 0.0 ) {
-		angle = acos( wxyz[0] ) * 2.0;
+		angle = std::acos( wxyz[0] ) * 2.0;
 		axis[0] = wxyz[1];
 		axis[1] = wxyz[2];
 		axis[2] = wxyz[3];
-		axis /= sqrt( squaredLength );
+		axis /= std::sqrt( squaredLength );
 	} else {
 		axis = { 1, 0, 0 };
 		angle = 0;

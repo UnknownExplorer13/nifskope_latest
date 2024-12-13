@@ -854,7 +854,7 @@ public:
 	//! Default constructor
 	Quat()
 	{
-		memcpy( wxyz, identity, 16 );
+		std::memcpy( wxyz, identity, sizeof(Quat) );
 	}
 	//! Constructor
 	Quat( float w, float x, float y, float z )
@@ -984,7 +984,7 @@ public:
 	//! Constructor
 	Matrix()
 	{
-		memcpy( m, identity, 36 );
+		std::memcpy( m, identity, sizeof(Matrix) );
 	}
 	//! Times operator for a matrix
 	Matrix operator*( const Matrix & m2 ) const
@@ -1085,7 +1085,7 @@ public:
 	//! Constructor
 	Matrix4()
 	{
-		memcpy( m, identity, 64 );
+		std::memcpy( m, identity, sizeof(Matrix4) );
 	}
 	//! Times operator for a matrix
 	Matrix4 operator*( const Matrix4 & m2 ) const
@@ -1155,6 +1155,9 @@ public:
 
 	//! %Data accessor
 	const float * data() const { return (float *)m; }
+
+	static Matrix4 fromFrustum( double left, double right, double bottom, double top, double nearVal, double farVal );
+	static Matrix4 fromOrtho( double left, double right, double bottom, double top, double nearVal, double farVal );
 
 protected:
 	float m[4][4];
@@ -1675,7 +1678,7 @@ public:
 	FixedMatrix( int length1, int length2 )
 	{
 		int length = length1 * length2;
-		v_ = (T *)malloc( sizeof(T) * length );
+		v_ = (T *)std::malloc( sizeof(T) * length );
 		len0 = length1;
 		len1 = length2;
 	}
@@ -1686,14 +1689,14 @@ public:
 		int datalen = other.count();
 		len0 = other.count( 0 );
 		len1 = other.count( 1 );
-		v_ = (T *)malloc( sizeof(T) * datalen );
-		memcpy( array(), other.array(), datalen );
+		v_ = (T *)std::malloc( sizeof(T) * datalen );
+		std::memcpy( array(), other.array(), datalen );
 	}
 
 	//! Default Destructor
 	~FixedMatrix()
 	{
-		free( v_ );
+		std::free( v_ );
 	}
 
 	//! Copy Assignment
