@@ -1,7 +1,9 @@
-#version 400 compatibility
+#version 410 core
 
 out vec3 LightDir;
 out vec3 ViewDir;
+
+out vec4 texCoord;
 
 out mat3 btnMatrix;
 
@@ -12,8 +14,18 @@ out vec4 D;
 out mat3 reflMatrix;
 
 uniform mat3 viewMatrix;
+uniform mat3 normalMatrix;
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
+uniform vec4 lightSourcePosition0;	// W = environment map rotation (-1.0 to 1.0)
+uniform vec4 lightSourceDiffuse0;	// A = overall brightness
+uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone mapping)
+
+layout ( location = 0 ) in vec3 vertexPosition;
+layout ( location = 1 ) in vec4 multiTexCoord0;
+layout ( location = 2 ) in vec3 normalVector;
+layout ( location = 3 ) in vec4 tangentVector;
+layout ( location = 4 ) in vec4 vertexColor;
 
 mat3 rotateEnv( mat3 m, float rz )
 {
@@ -26,22 +38,23 @@ mat3 rotateEnv( mat3 m, float rz )
 
 void main( void )
 {
-	gl_Position = gl_ModelViewProjectionMatrix * gl_Vertex;
-	gl_TexCoord[0] = gl_MultiTexCoord0;
+	vec4 v = modelViewMatrix * vec4( vertexPosition, 0.0 );
+	gl_Position = projectionMatrix * v;
+	texCoord = multiTexCoord0;
 
-	btnMatrix[2] = normalize( gl_NormalMatrix * gl_Normal );
-	btnMatrix[1] = normalize( gl_NormalMatrix * gl_MultiTexCoord1.xyz );
-	btnMatrix[0] = normalize( gl_NormalMatrix * gl_MultiTexCoord2.xyz );
-	vec3 v = vec3( gl_ModelViewMatrix * gl_Vertex );
+	btnMatrix[2] = normalize( normalMatrix * normalVector );
+	btnMatrix[1] = normalize( normalMatrix * ( cross( normalVector, tangentVector.xyz ) * tangentVector.w ) );
+	btnMatrix[0] = normalize( normalMatrix * tangentVector.xyz );
 
-	reflMatrix = rotateEnv( viewMatrix, gl_LightSource[0].position.w * 3.14159265 );
+	reflMatrix = rotateEnv( viewMatrix, lightSourcePosition0.w * 3.14159265 );
 
-	if (gl_ProjectionMatrix[3][3] == 1.0)
-		v = vec3(0.0, 0.0, -1.0);	// orthographic view
-	ViewDir = -v.xyz;
-	LightDir = gl_LightSource[0].position.xyz;
+	if ( projectionMatrix[3][3] == 1.0 )
+		ViewDir = vec3(0.0, 0.0, 1.0);	// orthographic view
+	else
+		ViewDir = -v.xyz;
+	LightDir = lightSourcePosition0.xyz;
 
-	A = gl_LightSource[0].ambient;
-	C = gl_Color;
-	D = gl_LightSource[0].diffuse;
+	A = lightSourceAmbient;
+	C = vertexColor;
+	D = lightSourceDiffuse0;
 }

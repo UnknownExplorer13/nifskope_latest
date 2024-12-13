@@ -1,15 +1,15 @@
-#version 120
+#version 410 core
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+out vec3 LightDir;
+out vec3 ViewDir;
 
-varying mat3 tbnMatrix;
-varying mat3 reflMatrix;
-varying vec3 v;
+out mat3 tbnMatrix;
+out mat3 reflMatrix;
+out vec3 v;
 
-varying vec4 A;
-varying vec4 C;
-varying vec4 D;
+out vec4 A;
+out vec4 C;
+out vec4 D;
 
 uniform mat3 viewMatrix;
 

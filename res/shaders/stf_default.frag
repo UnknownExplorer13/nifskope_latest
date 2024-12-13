@@ -1,5 +1,4 @@
-#version 400 compatibility
-#extension GL_ARB_shader_texture_lod : require
+#version 410 core
 
 struct UVStream {
 	vec4	scaleAndOffset;
@@ -221,6 +220,8 @@ uniform	LayeredMaterial	lm;
 in vec3 LightDir;
 in vec3 ViewDir;
 
+in vec4 texCoord;
+
 in vec4 A;
 in vec4 C;
 in vec4 D;
@@ -285,7 +286,7 @@ vec3 tonemap(vec3 x, float y)
 
 vec2 getTexCoord(in UVStream uvStream)
 {
-	vec2	offset = ( !uvStream.useChannelTwo ? gl_TexCoord[0].st : gl_TexCoord[0].pq );
+	vec2	offset = ( !uvStream.useChannelTwo ? texCoord.st : texCoord.pq );
 	return offset * uvStream.scaleAndOffset.xy + uvStream.scaleAndOffset.zw;
 }
 

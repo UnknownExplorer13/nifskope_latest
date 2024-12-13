@@ -1,7 +1,7 @@
 # effect shader
 
 # Fallout 4
-check HEADER/BS Header/BS Version == 130
+check BSVersion == 130
 check BSEffectShaderProperty
 
 texcoords 0 base

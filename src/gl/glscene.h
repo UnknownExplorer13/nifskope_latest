@@ -215,6 +215,8 @@ public:
 
 	QVector<Shape *> shapes;
 
+	Matrix4 projectionMatrix;
+
 	BoundSphere bounds() const;
 
 	float timeMin() const;

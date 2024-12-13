@@ -1,6 +1,7 @@
 # Oblivion and Fallout 3/New Vegas
 
-check HEADER/BS Header/BS Version < 83
+check BSVersion < 83
+check BSVersion > 0
 
 checkgroup begin or
 	check NiTexturingProperty

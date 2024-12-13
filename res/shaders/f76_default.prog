@@ -1,8 +1,8 @@
 # default shader
 
 # Fallout 76
-check HEADER/BS Header/BS Version >= 151
-check HEADER/BS Header/BS Version < 170
+check BSVersion >= 151
+check BSVersion < 170
 check BSLightingShaderProperty
 checkgroup begin or
 	check BSTriShape

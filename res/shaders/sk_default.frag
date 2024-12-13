@@ -1,4 +1,4 @@
-#version 120
+#version 410 core
 
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
@@ -40,15 +40,15 @@ uniform float lightingEffect2;
 
 uniform float envReflection;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec4 A;
-varying vec4 C;
-varying vec4 D;
+in vec4 A;
+in vec4 C;
+in vec4 D;
 
-varying mat3 tbnMatrix;
-varying mat3 reflMatrix;
+in mat3 tbnMatrix;
+in mat3 reflMatrix;
 
 mat3 tbnMatrix_norm = mat3(normalize(tbnMatrix[0]), normalize(tbnMatrix[1]), normalize(tbnMatrix[2]));
 
@@ -79,11 +79,11 @@ void main( void )
 	vec3 E = normalize(ViewDir);
 	
 	if ( hasHeightMap ) {
-		float height = texture2D( HeightMap, offset ).r;
+		float height = texture( HeightMap, offset ).r;
 		offset += normalize(ViewDir * tbnMatrix_norm).xy * (height * 0.08 - 0.04); 
 	}
 
-	vec4 baseMap = texture2D( BaseMap, offset );
+	vec4 baseMap = texture( BaseMap, offset );
 
 	vec4 color = baseMap;
 	color.a = C.a * baseMap.a * alpha;
@@ -96,8 +96,8 @@ void main( void )
 			discard;
 	}
 
-	vec4 normalMap = texture2D( NormalMap, offset );
-	vec4 glowMap = texture2D( GlowMap, offset );
+	vec4 normalMap = texture( NormalMap, offset );
+	vec4 glowMap = texture( GlowMap, offset );
 	
 	vec3 normal = normalize(tbnMatrix_norm * (normalMap.rgb * 2.0 - 1.0));
 	if ( !gl_FrontFacing )
@@ -122,11 +122,11 @@ void main( void )
 
 	// Environment
 	if ( hasCubeMap ) {
-		vec4 cube = textureCube( CubeMap, reflectedWS );
+		vec4 cube = texture( CubeMap, reflectedWS );
 		cube.rgb *= envReflection;
 		
 		if ( hasEnvMask ) {
-			vec4 env = texture2D( EnvironmentMap, offset );
+			vec4 env = texture( EnvironmentMap, offset );
 			cube.rgb *= env.r;
 		} else {
 			cube.rgb *= normalMap.a;
@@ -152,7 +152,7 @@ void main( void )
 
 	vec3 backlight = vec3(0.0);
 	if ( hasBacklight ) {
-		backlight = texture2D( BacklightMap, offset ).rgb;
+		backlight = texture( BacklightMap, offset ).rgb;
 		backlight *= NdotNegL;
 		
 		emissive += backlight * D.rgb;
@@ -160,7 +160,7 @@ void main( void )
 
 	vec4 mask = vec4(0.0);
 	if ( hasRimlight || hasSoftlight ) {
-		mask = texture2D( LightMask, offset );
+		mask = texture( LightMask, offset );
 	}
 
 	vec3 rim = vec3(0.0);

@@ -1,6 +1,6 @@
 # skybox shader
 
 # never enabled on models
-check HEADER/BS Header/BS Version < 0
+check BSVersion < 0
 
 shaders skybox.vert skybox.frag

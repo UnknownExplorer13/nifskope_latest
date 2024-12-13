@@ -1,12 +1,12 @@
-#version 120
+#version 410 core
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+out vec3 LightDir;
+out vec3 ViewDir;
 
-varying vec4 A;
-varying vec4 D;
+out vec4 A;
+out vec4 D;
 
-varying mat3 reflMatrix;
+out mat3 reflMatrix;
 
 uniform mat3 viewMatrix;
 uniform bool invertZAxis;

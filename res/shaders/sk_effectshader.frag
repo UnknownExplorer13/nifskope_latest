@@ -1,4 +1,4 @@
-#version 120
+#version 410 core
 
 uniform sampler2D BaseMap;
 uniform sampler2D GreyscaleMap;
@@ -26,22 +26,22 @@ uniform vec2 uvOffset;
 uniform vec4 falloffParams;
 uniform float falloffDepth;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec4 C;
+in vec4 C;
 
-varying vec3 N;
-varying vec3 v;
+in vec3 N;
+in vec3 v;
 
 vec4 colorLookup( float x, float y ) {
 
-	return texture2D( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0)) );
+	return texture( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0)) );
 }
 
 void main( void )
 {
-	vec4 baseMap = texture2D( BaseMap, gl_TexCoord[0].st * uvScale + uvOffset );
+	vec4 baseMap = texture( BaseMap, gl_TexCoord[0].st * uvScale + uvOffset );
 
 	vec4 color;
 

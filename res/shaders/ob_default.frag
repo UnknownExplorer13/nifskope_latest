@@ -1,4 +1,4 @@
-#version 120
+#version 410 core
 
 uniform sampler2D BaseMap;
 uniform sampler2D NormalMap;
@@ -35,15 +35,15 @@ uniform float uvRotation;
 
 uniform vec4 falloffParams;
 
-varying mat3 reflMatrix;
+in mat3 reflMatrix;
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+in vec3 LightDir;
+in vec3 ViewDir;
 
-varying vec4 C;
-varying vec4 D;
-varying vec4 A;
-varying float toneMapScale;
+in vec4 C;
+in vec4 D;
+in vec4 A;
+in float toneMapScale;
 
 
 vec3 tonemap(vec3 x)
@@ -66,7 +66,7 @@ vec3 tonemap(vec3 x)
 vec2 parallaxMapping( vec3 V, vec2 offset )
 {
 	if ( parallaxMaxSteps < 2 )
-		return offset + V.xy * ( ( 0.5 - texture2D( BaseMap, offset ).a ) * parallaxScale );
+		return offset + V.xy * ( ( 0.5 - texture( BaseMap, offset ).a ) * parallaxScale );
 
 	// determine optimal height of each layer
 	float	layerHeight = 1.0 / mix( max( float(parallaxMaxSteps), 4.0 ), 4.0, abs(V.z) );
@@ -80,7 +80,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 	dtex *= layerHeight;
 
 	// height from heightmap
-	float	heightFromTexture = texture2D( HeightMap, currentTextureCoords ).r;
+	float	heightFromTexture = texture( HeightMap, currentTextureCoords ).r;
 
 	// while point is above the surface
 	while ( curLayerHeight > heightFromTexture ) {
@@ -89,7 +89,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 		// shift of texture coordinates
 		currentTextureCoords -= dtex;
 		// new height from heightmap
-		heightFromTexture = texture2D( HeightMap, currentTextureCoords ).r;
+		heightFromTexture = texture( HeightMap, currentTextureCoords ).r;
 	}
 
 	// previous texture coordinates
@@ -97,7 +97,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 
 	// heights for linear interpolation
 	float	nextH = curLayerHeight - heightFromTexture;
-	float	prevH = curLayerHeight + layerHeight - texture2D( HeightMap, prevTCoords ).r;
+	float	prevH = curLayerHeight + layerHeight - texture( HeightMap, prevTCoords ).r;
 
 	// proportions for linear interpolation
 	float	weight = nextH / ( nextH - prevH );
@@ -118,7 +118,7 @@ void main( void )
 	if ( parallaxMaxSteps >= 1 && parallaxScale >= 0.0005 )
 		offset = parallaxMapping( E, offset );
 
-	vec4 baseMap = texture2D( BaseMap, offset );
+	vec4 baseMap = texture( BaseMap, offset );
 	vec4 color = baseMap;
 
 	if ( isEffect ) {
@@ -135,7 +135,7 @@ void main( void )
 		color.rgb = color.rgb * glowColor.rgb * glowMult;
 		color.a = color.a * alphaMult;
 	} else {
-		vec4 normalMap = texture2D( NormalMap, offset );
+		vec4 normalMap = texture( NormalMap, offset );
 
 		vec3 normal = normalize( normalMap.rgb * 2.0 - 1.0 );
 		if ( !gl_FrontFacing )
@@ -170,9 +170,9 @@ void main( void )
 		if ( hasCubeMap && cubeMapScale > 0.0 ) {
 			vec3 R = reflect( -E, normal );
 			vec3 reflectedWS = reflMatrix * R;
-			vec3 cube = textureCube( CubeMap, reflectedWS ).rgb;
+			vec3 cube = texture( CubeMap, reflectedWS ).rgb;
 			if ( hasCubeMask )
-				cube *= texture2D( EnvironmentMap, offset ).r * cubeMapScale;
+				cube *= texture( EnvironmentMap, offset ).r * cubeMapScale;
 			else
 				cube *= normalMap.a * cubeMapScale;
 			color.rgb += cube * sqrt( gl_LightSource[0].ambient.rgb );
@@ -185,7 +185,7 @@ void main( void )
 		else
 			emissive *= C.rgb;
 		if ( hasGlowMap )
-			color.rgb += emissive * baseMap.rgb * texture2D( GlowMap, offset ).rgb;
+			color.rgb += emissive * baseMap.rgb * texture( GlowMap, offset ).rgb;
 		else if ( hasEmit )
 			color.rgb += emissive * baseMap.rgb;
 

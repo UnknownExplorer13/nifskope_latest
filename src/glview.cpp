@@ -102,12 +102,12 @@ GLView::GLView( QWindow * p )
 
 	QSurfaceFormat	fmt;
 
-	// OpenGL version (4.1, compatibility profile)
+	// OpenGL version (4.1, core profile)
 	fmt.setRenderableType( QSurfaceFormat::OpenGL );
 	fmt.setMajorVersion( 4 );
 	fmt.setMinorVersion( 1 );
-	fmt.setProfile( QSurfaceFormat::CompatibilityProfile );
-	fmt.setOption( QSurfaceFormat::DeprecatedFunctions, true );
+	fmt.setProfile( QSurfaceFormat::CoreProfile );
+	fmt.setOption( QSurfaceFormat::DeprecatedFunctions, false );
 
 	// V-Sync
 	fmt.setSwapInterval( 1 );
@@ -398,8 +398,8 @@ void GLView::glProjection( int x, int y )
 	float bounds = std::max< float >( bs.radius, 1024.0f * scale() );
 
 
-	GLdouble nr = fabs( bs.center[2] ) - bounds * 1.5;
-	GLdouble fr = fabs( bs.center[2] ) + bounds * 1.5;
+	GLdouble nr = std::fabs( bs.center[2] ) - bounds * 1.5;
+	GLdouble fr = std::fabs( bs.center[2] ) + bounds * 1.5;
 
 	if ( perspectiveMode || (view == ViewWalk) ) {
 		// Perspective View
@@ -411,18 +411,15 @@ void GLView::glProjection( int x, int y )
 		// ensure distance
 		fr = std::max< GLdouble >( fr, nr + scale() );
 
-		GLdouble h2 = tan( ( cfg.fov / Zoom ) / 360 * M_PI ) * nr;
+		GLdouble h2 = std::tan( ( cfg.fov / Zoom ) / 360 * M_PI ) * nr;
 		GLdouble w2 = h2 * aspect;
-		glFrustum( -w2, +w2, -h2, +h2, nr, fr );
+		scene->projectionMatrix = Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr );
 	} else {
 		// Orthographic View
 		GLdouble h2 = Dist / Zoom;
 		GLdouble w2 = h2 * aspect;
-		glOrtho( -w2, +w2, -h2, +h2, nr, fr );
+		scene->projectionMatrix = Matrix4::fromOrtho( -w2, +w2, -h2, +h2, nr, fr );
 	}
-
-	glMatrixMode( GL_MODELVIEW );
-	glLoadIdentity();
 }
 
 

@@ -1,14 +1,14 @@
-#version 120
+#version 410 core
 
-varying vec3 LightDir;
-varying vec3 ViewDir;
+out vec3 LightDir;
+out vec3 ViewDir;
 
-varying vec4 C;
+out vec4 C;
 
-varying vec3 N;
-varying vec3 t;
-varying vec3 b;
-varying vec3 v;
+out vec3 N;
+out vec3 t;
+out vec3 b;
+out vec3 v;
 
 // FIXME: these uniforms are never set
 uniform bool isGPUSkinned;

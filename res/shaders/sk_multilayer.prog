@@ -1,8 +1,8 @@
 # multi-layer parallax
 
 # Skyrim
-check HEADER/BS Header/BS Version >= 83
-check HEADER/BS Header/BS Version <= 100
+check BSVersion >= 83
+check BSVersion <= 100
 check BSLightingShaderProperty
 check BSLightingShaderProperty/Shader Type == 11
 checkgroup begin or
