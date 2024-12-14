@@ -37,7 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QVector>
 #include <QMap>
 #include <QModelIndex>
-#include <QOpenGLFunctions>
+#include <QOpenGLFunctions_4_1_Core>
 
 #include "data/niftypes.h"
 
@@ -102,12 +102,12 @@ protected:
 	class Shader
 	{
 public:
-		Shader( const QString & name, unsigned int type, QOpenGLFunctions * fn );
+		Shader( const QString & name, unsigned int type, QOpenGLFunctions_4_1_Core * fn );
 		~Shader();
 
 		bool load( const QString & filepath );
 
-		QOpenGLFunctions * f;
+		QOpenGLFunctions_4_1_Core * f;
 		QString name;
 		unsigned int id;
 		bool status;
@@ -121,12 +121,12 @@ public:
 	class Program
 	{
 public:
-		Program( const QString & name, QOpenGLFunctions * fn );
+		Program( const QString & name, QOpenGLFunctions_4_1_Core * fn );
 		~Program();
 
 		bool load( const QString & filepath, NifSkopeOpenGLContext * context );
 
-		QOpenGLFunctions * f;
+		QOpenGLFunctions_4_1_Core * f;
 		QString name;
 		unsigned int id;
 		bool status = false;
@@ -230,11 +230,6 @@ public:
 							int & texunit, const QString & alternate, uint clamp, const QString & forced = {} );
 	};
 
-protected:
-	QMap<QString, Shader *> shaders;
-	QMap<QString, Program *> programs;
-
-public:
 	NifSkopeOpenGLContext( QOpenGLContext * context );
 	~NifSkopeOpenGLContext();
 
@@ -247,10 +242,76 @@ public:
 	//! Stop shader program
 	void stopProgram();
 
+	void setGlobalUniforms();
+
+	// (attrMask >> (N * 4)) & 15 = vertex attribute mode for attribute N, data is in attrData[N]
+	//                                  0: unused attribute (attrData[N] can be nullptr)
+	//                                  1 to 4: the data type is float, vec2, vec3 or vec4
+	//                              setting bit 3 of the mode enables the use of static data instead of an array
+	// elementMode = GL_POINTS, GL_LINES, GL_TRIANGLES, etc.
+	// elementType = GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT or GL_UNSIGNED_INT
+	void drawShape( unsigned int numVerts, unsigned int attrMask,
+					unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+					const float * const * attrData, const void * elementData );
+
 	//! Context Functions
-	QOpenGLFunctions	fn;
+	QOpenGLFunctions_4_1_Core *	fn;
 	//! Context
 	QOpenGLContext *	cx;
+
+	// work around core profile functions missing from QOpenGLFunctions_4_1_Core
+	void ( *vertexAttrib1f )( unsigned int index, float v );
+	void ( *vertexAttrib2fv )( unsigned int index, const float * v );
+	void ( *vertexAttrib3fv )( unsigned int index, const float * v );
+	void ( *vertexAttrib4fv )( unsigned int index, const float * v );
+
+	Matrix	viewMatrix;
+	Matrix	normalMatrix;
+	Matrix4	modelViewMatrix;
+	Matrix4	projectionMatrix;
+	// W = environment map rotation (-1.0 to 1.0), unused for light sources 1 and 2
+	FloatVector4	lightSourcePosition0;
+	// A = overall brightness, unused for light sources 1 and 2
+	FloatVector4	lightSourceDiffuse0;
+	// A = tone mapping control (1.0 = full tone mapping)
+	FloatVector4	lightSourceAmbient;
+	FloatVector4	lightSourcePosition1;
+	FloatVector4	lightSourceDiffuse1;
+	FloatVector4	lightSourcePosition2;
+	FloatVector4	lightSourceDiffuse2;
+
+protected:
+	QMap<QString, Shader *> shaders;
+	QMap<QString, Program *> programs;
+
+	struct ShapeData {
+		QOpenGLFunctions_4_1_Core *	fn;
+		std::uint32_t	numVerts;
+		std::uint32_t	attrMask;
+		std::uint32_t	numIndices;
+		std::uint32_t	elementModeAndType;		// (mode << 16) | type
+		unsigned int	vao;					// vertex array object
+		unsigned int	ebo;					// element buffer object
+		unsigned int	vbo[8];					// vertex buffer objects
+		ShapeData *	prev;
+		ShapeData *	next;
+		ShapeData( NifSkopeOpenGLContext & context, std::uint32_t vertCnt, std::uint32_t attrModeMask,
+					std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
+					const float * const * attrData, const void * elementData );
+		~ShapeData();
+		void drawShape( bool noBind = false );
+	};
+
+	struct ShapeDataHash {
+		std::uint32_t	h[4];
+		ShapeDataHash( std::uint32_t vertCnt, std::uint32_t attrModeMask,
+						std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
+						const float * const * attrData, const void * elementData );
+		inline bool operator==( const ShapeDataHash & r ) const
+		{
+			return ( std::memcmp( &(h[0]), &(r.h[0]), sizeof( std::uint32_t ) * 4 ) == 0 );
+		}
+	};
 };
 
 #endif

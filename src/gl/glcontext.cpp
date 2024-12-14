@@ -32,12 +32,14 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "glcontext.hpp"
 #include "ddstxt16.hpp"
+#include "libfo76utils/src/filebuf.hpp"
 #include "model/nifmodel.h"
 #include "gltex.h"
 #include "glproperty.h"
 
 #include <QDir>
 #include <QOpenGLContext>
+#include <QOpenGLVersionFunctionsFactory>
 
 
 static const QString white = "#FFFFFFFF";
@@ -232,7 +234,7 @@ void NifSkopeOpenGLContext::ConditionGroup::addCondition( Condition * c )
 	conditions.append( c );
 }
 
-NifSkopeOpenGLContext::Shader::Shader( const QString & n, unsigned int t, QOpenGLFunctions * fn )
+NifSkopeOpenGLContext::Shader::Shader( const QString & n, unsigned int t, QOpenGLFunctions_4_1_Core * fn )
 	: f( fn ), name( n ), id( 0 ), status( false ), type( t )
 {
 	id = f->glCreateShader( type );
@@ -287,7 +289,7 @@ bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 }
 
 
-NifSkopeOpenGLContext::Program::Program( const QString & n, QOpenGLFunctions * fn )
+NifSkopeOpenGLContext::Program::Program( const QString & n, QOpenGLFunctions_4_1_Core * fn )
 	: f( fn ), name( n.toLower() ), id( 0 )
 {
 	unsigned int	m = ( name.startsWith( QLatin1StringView("stf_") ) ? 512 : 128 );
@@ -666,8 +668,20 @@ bool NifSkopeOpenGLContext::Program::uniSampler( BSShaderLightingProperty * bspr
 
 
 NifSkopeOpenGLContext::NifSkopeOpenGLContext( QOpenGLContext * context )
-	: fn( context ), cx( context )
+	:	fn( QOpenGLVersionFunctionsFactory::get< QOpenGLFunctions_4_1_Core >( context ) ), cx( context ),
+		lightSourcePosition0( 0.0f, 0.0f, 1.0f, 0.0f ), lightSourceDiffuse0( 1.0f ), lightSourceAmbient( 1.0f ),
+		lightSourcePosition1( 0.0f, 0.0f, 1.0f, 0.0f ), lightSourceDiffuse1( 1.0f ),
+		lightSourcePosition2( 0.0f, 0.0f, 1.0f, 0.0f ), lightSourceDiffuse2( 1.0f )
 {
+	vertexAttrib1f = reinterpret_cast< void (*)( unsigned int, float ) >( cx->getProcAddress( "glVertexAttrib1f" ) );
+	vertexAttrib2fv =
+		reinterpret_cast< void (*)( unsigned int, const float * ) >( cx->getProcAddress( "glVertexAttrib2fv" ) );
+	vertexAttrib3fv =
+		reinterpret_cast< void (*)( unsigned int, const float * ) >( cx->getProcAddress( "glVertexAttrib3fv" ) );
+	vertexAttrib4fv =
+		reinterpret_cast< void (*)( unsigned int, const float * ) >( cx->getProcAddress( "glVertexAttrib4fv" ) );
+	if ( !( fn && vertexAttrib1f && vertexAttrib2fv && vertexAttrib3fv && vertexAttrib4fv ) )
+		throw NifSkopeError( "failed to initialize OpenGL functions" );
 }
 
 NifSkopeOpenGLContext::~NifSkopeOpenGLContext()
@@ -691,21 +705,21 @@ void NifSkopeOpenGLContext::updateShaders()
 
 	dir.setNameFilters( { "*.vert" } );
 	for ( const QString& name : dir.entryList() ) {
-		Shader * shader = new Shader( name, GL_VERTEX_SHADER, &fn );
+		Shader * shader = new Shader( name, GL_VERTEX_SHADER, fn );
 		shader->load( dir.filePath( name ) );
 		shaders.insert( name, shader );
 	}
 
 	dir.setNameFilters( { "*.frag" } );
 	for ( const QString& name : dir.entryList() ) {
-		Shader * shader = new Shader( name, GL_FRAGMENT_SHADER, &fn );
+		Shader * shader = new Shader( name, GL_FRAGMENT_SHADER, fn );
 		shader->load( dir.filePath( name ) );
 		shaders.insert( name, shader );
 	}
 
 	dir.setNameFilters( { "*.prog" } );
 	for ( const QString& name : dir.entryList() ) {
-		Program * program = new Program( name, &fn );
+		Program * program = new Program( name, fn );
 		program->load( dir.filePath( name ), this );
 		programs.insert( program->name, program );
 	}
@@ -725,12 +739,179 @@ NifSkopeOpenGLContext::Program * NifSkopeOpenGLContext::useProgram( const QStrin
 	unsigned int	id = 0;
 	if ( prog )
 		id = prog->id;
-	fn.glUseProgram( id );
+	fn->glUseProgram( id );
 	return prog;
 }
 
 void NifSkopeOpenGLContext::stopProgram()
 {
-	fn.glUseProgram( 0 );
+	fn->glUseProgram( 0 );
+}
+
+void NifSkopeOpenGLContext::setGlobalUniforms()
+{
+	for ( Program * p : programs ) {
+		p->uni3m( "viewMatrix", viewMatrix );
+		p->uni3m( "normalMatrix", normalMatrix );
+		p->uni4m( "modelViewMatrix", modelViewMatrix );
+		p->uni4m( "projectionMatrix", projectionMatrix );
+		p->uni4f( "lightSourcePosition0", lightSourcePosition0 );
+		p->uni4f( "lightSourceDiffuse0", lightSourceDiffuse0 );
+		p->uni4f( "lightSourceAmbient", lightSourceAmbient );
+		p->uni4f( "lightSourcePosition1", lightSourcePosition1 );
+		p->uni4f( "lightSourceDiffuse1", lightSourceDiffuse1 );
+		p->uni4f( "lightSourcePosition2", lightSourcePosition2 );
+		p->uni4f( "lightSourceDiffuse2", lightSourceDiffuse2 );
+	}
+}
+
+void NifSkopeOpenGLContext::drawShape(
+	unsigned int numVerts, unsigned int attrMask,
+	unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+	const float * const * attrData, const void * elementData )
+{
+	// TODO: cache data
+	ShapeData	d( *this, numVerts, attrMask, numIndices, elementMode, elementType, attrData, elementData );
+	d.drawShape( true );
+}
+
+NifSkopeOpenGLContext::ShapeData::ShapeData(
+	NifSkopeOpenGLContext & context, std::uint32_t vertCnt, std::uint32_t attrModeMask,
+	std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
+	const float * const * attrData, const void * elementData )
+	:	fn( context.fn ), numVerts( vertCnt ), attrMask( attrModeMask ), numIndices( indicesCnt ),
+		elementModeAndType( ( elementMode << 16 ) | elementType ), vao( 0 ), ebo( 0 ), prev( nullptr ), next( nullptr )
+{
+	QOpenGLFunctions_4_1_Core &	f = *( context.fn );
+	f.glGenVertexArrays( 1, &vao );
+	f.glBindVertexArray( vao );
+	GLsizei	stride = 0;
+	for ( std::uint32_t m = attrModeMask; m; m = m >> 4 ) {
+		if ( !( m & 8 ) )
+			stride += GLsizei( sizeof( float ) * ( m & 7 ) );
+	}
+	size_t	attrOffs = 0;
+	for ( size_t i = 0; attrModeMask; i++, attrModeMask = attrModeMask >> 4 ) {
+		size_t	nBytes = attrModeMask & 7;
+		if ( !nBytes )
+			continue;
+		nBytes = nBytes * sizeof( float );
+		if ( attrModeMask & 8 ) {
+			f.glDisableVertexAttribArray( GLuint( i ) );
+			if ( ( attrModeMask & 7 ) >= 4 )
+				context.vertexAttrib4fv( GLuint( i ), attrData[i] );
+			else if ( ( attrModeMask & 7 ) == 3 )
+				context.vertexAttrib3fv( GLuint( i ), attrData[i] );
+			else if ( ( attrModeMask & 7 ) == 2 )
+				context.vertexAttrib2fv( GLuint( i ), attrData[i] );
+			else
+				context.vertexAttrib1f( GLuint( i ), attrData[i][0] );
+		} else {
+			const void *	p = reinterpret_cast< const void * >( attrOffs );
+			attrOffs = attrOffs + nBytes;
+			nBytes = nBytes * vertCnt;
+			f.glGenBuffers( 1, &( vbo[i] ) );
+			f.glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
+			f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( nBytes ), attrData[i], GL_STREAM_DRAW );
+			f.glVertexAttribPointer( GLuint( i ), GLint( attrModeMask & 7 ), GL_FLOAT, GL_FALSE, stride, p );
+			f.glEnableVertexAttribArray( GLuint( i ) );
+		}
+	}
+
+	f.glGenBuffers( 1, &ebo );
+	f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ebo );
+	std::uint32_t	elementSize = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
+	f.glBufferData( GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr( indicesCnt * elementSize ), elementData, GL_STREAM_DRAW );
+}
+
+NifSkopeOpenGLContext::ShapeData::~ShapeData()
+{
+	QOpenGLFunctions_4_1_Core &	f = *fn;
+	f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
+	f.glBindVertexArray( 0 );
+	f.glDeleteBuffers( 1, &ebo );
+	f.glDeleteVertexArrays( 1, &vao );
+	std::uint32_t	m = attrMask;
+	for ( size_t i = 0; m; i++, m = m >> 4 ) {
+		if ( ( m & 7 ) && !( m & 8 ) )
+			f.glDeleteBuffers( 1, &( vbo[i] ) );
+	}
+}
+
+void NifSkopeOpenGLContext::ShapeData::drawShape( bool noBind )
+{
+	QOpenGLFunctions_4_1_Core &	f = *fn;
+	if ( !noBind ) {
+		f.glBindVertexArray( vao );
+		f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ebo );
+	}
+	f.glDrawElements( GLenum( elementModeAndType >> 16 ),
+						GLsizei( numIndices ), GLenum( elementModeAndType & 0xFFFF ), nullptr );
+}
+
+
+NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
+	std::uint32_t vertCnt, std::uint32_t attrModeMask,
+	std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
+	const float * const * attrData, const void * elementData )
+{
+	std::uint32_t	elementModeAndType = ( elementMode << 16 ) | elementType;
+	h[0] = ~vertCnt;
+	h[1] = ~attrModeMask;
+	h[2] = ~indicesCnt;
+	h[3] = ~elementModeAndType;
+	size_t	offs = 0;
+	size_t	i = 0;
+	do {
+		const unsigned char *	p;
+		size_t	nBytes;
+		if ( !attrModeMask ) {
+			nBytes = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
+			nBytes = nBytes * indicesCnt;
+			p = reinterpret_cast< const unsigned char * >( elementData );
+		} else {
+			nBytes = attrModeMask & 7;
+			if ( !nBytes )
+				continue;
+			nBytes = nBytes * sizeof( float );
+			if ( !( attrModeMask & 8 ) )
+				nBytes = nBytes * vertCnt;
+			p = reinterpret_cast< const unsigned char * >( attrData[i] );
+		}
+		do {
+			if ( nBytes >= 32 && !( offs & 31 ) ) [[likely]] {
+				hashFunctionCRC32C< std::uint64_t >( h[0], FileBuffer::readUInt64Fast( p ) );
+				hashFunctionCRC32C< std::uint64_t >( h[1], FileBuffer::readUInt64Fast( p + 8 ) );
+				hashFunctionCRC32C< std::uint64_t >( h[2], FileBuffer::readUInt64Fast( p + 16 ) );
+				hashFunctionCRC32C< std::uint64_t >( h[3], FileBuffer::readUInt64Fast( p + 24 ) );
+				p = p + 32;
+				nBytes = nBytes - 32;
+				offs = offs + 32;
+				continue;
+			}
+			std::uint32_t &	r = h[( offs >> 3 ) & 3];
+			if ( ( offs & 1 ) || nBytes < 2 ) {
+				hashFunctionCRC32C< unsigned char >( r, *p );
+				p++;
+				nBytes--;
+				offs++;
+			} else if ( ( offs & 2 ) || nBytes < 4 ) {
+				hashFunctionCRC32C< std::uint16_t >( r, FileBuffer::readUInt16Fast( p ) );
+				p = p + 2;
+				nBytes = nBytes - 2;
+				offs = offs + 2;
+			} else if ( ( offs & 4 ) || nBytes < 8 ) {
+				hashFunctionCRC32C< std::uint32_t >( r, FileBuffer::readUInt32Fast( p ) );
+				p = p + 4;
+				nBytes = nBytes - 4;
+				offs = offs + 4;
+			} else {
+				hashFunctionCRC32C< std::uint64_t >( r, FileBuffer::readUInt64Fast( p ) );
+				p = p + 8;
+				nBytes = nBytes - 8;
+				offs = offs + 8;
+			}
+		} while ( nBytes > 0 );
+	} while ( ( attrModeMask = attrModeMask >> 4 ) != 0U );
 }
 
