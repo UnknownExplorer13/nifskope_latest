@@ -23,9 +23,10 @@ uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone ma
 
 layout ( location = 0 ) in vec3 vertexPosition;
 layout ( location = 1 ) in vec4 multiTexCoord0;
-layout ( location = 2 ) in vec3 normalVector;
-layout ( location = 3 ) in vec4 tangentVector;
 layout ( location = 4 ) in vec4 vertexColor;
+layout ( location = 5 ) in vec3 normalVector;
+layout ( location = 6 ) in vec3 tangentVector;
+layout ( location = 7 ) in vec3 bitangentVector;
 
 mat3 rotateEnv( mat3 m, float rz )
 {
@@ -38,13 +39,13 @@ mat3 rotateEnv( mat3 m, float rz )
 
 void main( void )
 {
-	vec4 v = modelViewMatrix * vec4( vertexPosition, 0.0 );
+	vec4 v = modelViewMatrix * vec4( vertexPosition, 1.0 );
 	gl_Position = projectionMatrix * v;
 	texCoord = multiTexCoord0;
 
-	btnMatrix[2] = normalize( normalMatrix * normalVector );
-	btnMatrix[1] = normalize( normalMatrix * ( cross( normalVector, tangentVector.xyz ) * tangentVector.w ) );
-	btnMatrix[0] = normalize( normalMatrix * tangentVector.xyz );
+	btnMatrix[2] = normalize( normalVector * normalMatrix );
+	btnMatrix[1] = normalize( tangentVector * normalMatrix );
+	btnMatrix[0] = normalize( bitangentVector * normalMatrix );
 
 	reflMatrix = rotateEnv( viewMatrix, lightSourcePosition0.w * 3.14159265 );
 

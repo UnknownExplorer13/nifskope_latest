@@ -41,64 +41,96 @@ void BSMesh::drawShapes( NodeList * secondPass )
 		updateData(nif);
 	}
 
-	glPushMatrix();
-	glMultMatrix(viewTrans());
-
-	glEnable(GL_POLYGON_OFFSET_FILL);
+	glEnable( GL_POLYGON_OFFSET_FILL );
 	if ( drawInSecondPass )
-		glPolygonOffset(0.5f, 1.0f);
+		glPolygonOffset( 0.5f, 1.0f );
 	else
-		glPolygonOffset(1.0f, 2.0f);
+		glPolygonOffset( 1.0f, 2.0f );
 
+	// location 0: position (vec3)
+	// location 1: texcoords (vec4, UV1 in st, UV2 in pq)
+	// location 2: texcoord0 (vec2)
+	// location 3: texcoord1 (vec2)
+	// location 4: color (vec4)
+	// location 5: normal (vec3)
+	// location 6: tangent (vec3)
+	// location 7: bitangent (vec3)
+	const float *	vertexAttrs[8];
+	FloatVector4	defaultPos( 0.0f );
+	FloatVector4	defaultColor( 1.0f );
+	FloatVector4	defaultNormal( 0.0f, 0.0f, 1.0f, 0.0f );
+	FloatVector4	defaultTangent( 0.0f, -1.0f, 0.0f, 0.0f );
+	FloatVector4	defaultBitangent( 1.0f, 0.0f, 0.0f, 0.0f );
+	vertexAttrs[0] = &( defaultPos[0] );
+	vertexAttrs[1] = &( defaultPos[0] );
+	vertexAttrs[4] = &( defaultColor[0] );
+	vertexAttrs[5] = &( defaultNormal[0] );
+	vertexAttrs[6] = &( defaultTangent[0] );
+	vertexAttrs[7] = &( defaultBitangent[0] );
+	qsizetype	numVerts = transVerts.count();
+	qsizetype	numTriangles = sortedTriangles.count();
+	std::uint32_t	attrMask = 0xBBBC00CBU;
+	if ( numVerts > 0 && numTriangles > 0 ) {
+		vertexAttrs[0] = &( transVerts.constFirst()[0] );
+		attrMask = attrMask & ~0x00000008U;
 
-	glEnableClientState(GL_VERTEX_ARRAY);
-	glVertexPointer(3, GL_FLOAT, 0, transVerts.constData());
+		if ( !Node::SELECTING ) [[likely]] {
+			glEnable( GL_FRAMEBUFFER_SRGB );
+			shader = scene->renderer->setupProgram(this, shader);
 
-	if ( !Node::SELECTING ) [[likely]] {
-		glEnable(GL_FRAMEBUFFER_SRGB);
-		shader = scene->renderer->setupProgram(this, shader);
+			const MeshFile *	sfMesh = getMeshFile();
+			if ( sfMesh && sfMesh->coords.count() >= numVerts ) {
+				vertexAttrs[1] = &( sfMesh->coords.constFirst()[0] );
+				attrMask = attrMask & ~0x00000080U;
+			}
+			if ( transColors.count() >= numVerts && scene->hasOption(Scene::DoVertexColors) ) {
+				vertexAttrs[4] = &( transColors.constFirst()[0] );
+				attrMask = attrMask & ~0x00080000U;
+			}
+			if ( transNorms.count() >= numVerts ) {
+				vertexAttrs[5] = &( transNorms.constFirst()[0] );
+				attrMask = attrMask & ~0x00800000U;
+			}
+			if ( transTangents.count() >= numVerts || tangents.count() >= numVerts ) {
+				if ( transTangents.count() >= numVerts )
+					vertexAttrs[6] = &( transTangents.constFirst()[0] );
+				else
+					vertexAttrs[6] = &( tangents.constFirst()[0] );
+				attrMask = attrMask & ~0x08000000U;
+			}
+			if ( transBitangents.count() >= numVerts || bitangents.count() >= numVerts ) {
+				if ( transBitangents.count() >= numVerts )
+					vertexAttrs[7] = &( transBitangents.constFirst()[0] );
+				else
+					vertexAttrs[7] = &( bitangents.constFirst()[0] );
+				attrMask = attrMask & ~0x80000000U;
+			}
 
-		if ( transNorms.count() ) {
-			glEnableClientState(GL_NORMAL_ARRAY);
-			glNormalPointer(GL_FLOAT, 0, transNorms.constData());
-		}
+			scene->renderer->drawShape( (unsigned int) numVerts, attrMask, (unsigned int) ( numTriangles * 3 ),
+										GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, sortedTriangles.constData() );
 
-		if ( transColors.count() && scene->hasOption(Scene::DoVertexColors) ) {
-			glEnableClientState(GL_COLOR_ARRAY);
-			glColorPointer(4, GL_FLOAT, 0, transColors.constData());
 		} else {
-			glColor(Color3(1.0f, 1.0f, 1.0f));
-		}
+			glDisable( GL_FRAMEBUFFER_SRGB );
 
-		if ( sortedTriangles.count() )
-			glDrawElements(GL_TRIANGLES, sortedTriangles.count() * 3, GL_UNSIGNED_SHORT, sortedTriangles.constData());
+			if ( scene->isSelModeObject() ) {
+				setColorKeyFromID( nodeId );
+			} else {
+				glColor4f( 0, 0, 0, 1 );
+			}
+
+			if ( !( drawInSecondPass && scene->isSelModeVertex() ) ) {
+				scene->renderer->drawShape( (unsigned int) numVerts, attrMask, (unsigned int) ( numTriangles * 3 ),
+											GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, sortedTriangles.constData() );
+			}
+		}
 
 		scene->renderer->stopProgram();
-
-		glDisableClientState(GL_NORMAL_ARRAY);
-		glDisableClientState(GL_COLOR_ARRAY);
-
-	} else {
-		glDisable(GL_FRAMEBUFFER_SRGB);
-
-		if ( scene->isSelModeObject() ) {
-			setColorKeyFromID( nodeId );
-		} else {
-			glColor4f( 0, 0, 0, 1 );
-		}
-
-		if ( sortedTriangles.count() && !( drawInSecondPass && scene->isSelModeVertex() ) )
-			glDrawElements(GL_TRIANGLES, sortedTriangles.count() * 3, GL_UNSIGNED_SHORT, sortedTriangles.constData());
 	}
 
-	glDisableClientState(GL_VERTEX_ARRAY);
-
-	glDisable(GL_POLYGON_OFFSET_FILL);
+	glDisable( GL_POLYGON_OFFSET_FILL );
 
 	if ( scene->isSelModeVertex() )
 		drawVerts();
-
-	glPopMatrix();
 }
 
 void BSMesh::drawSelection() const
@@ -114,20 +146,13 @@ void BSMesh::drawSelection() const
 	auto& idx = scene->currentIndex;
 	auto nif = NifModel::fromValidIndex(blk);
 
-	glDisable(GL_LIGHTING);
-	glDisable(GL_COLOR_MATERIAL);
-	glDisable(GL_TEXTURE_2D);
-	glDisable(GL_NORMALIZE);
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
 	glEnable(GL_BLEND);
 	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_CULL_FACE);
 
 	glDisable(GL_FRAMEBUFFER_SRGB);
-	glPushMatrix();
-	glMultMatrix(viewTrans());
 
 	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
@@ -355,8 +380,6 @@ void BSMesh::drawSelection() const
 #if 0 && !defined(QT_NO_DEBUG)
 	drawSphereSimple(boundSphere.center, boundSphere.radius, 72);
 #endif
-
-	glPopMatrix();
 }
 
 BoundSphere BSMesh::bounds() const
@@ -385,7 +408,6 @@ int BSMesh::meshCount()
 
 void BSMesh::drawVerts() const
 {
-	glDisable( GL_LIGHTING );
 	glNormalColor();
 
 	glPointSize( GLView::Settings::vertexSelectPointSize );
