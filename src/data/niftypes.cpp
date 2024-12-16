@@ -394,12 +394,12 @@ Matrix4 Matrix4::fromFrustum( double left, double right, double bottom, double t
 {
 	Matrix4	m;
 	m.m[0][0] = float( 2.0 * nearVal / ( right - left ) );
-	m.m[0][2] = float( ( right + left ) / ( right - left ) );
 	m.m[1][1] = float( 2.0 * nearVal / ( top - bottom ) );
-	m.m[1][2] = float( ( top + bottom ) / ( top - bottom ) );
+	m.m[2][0] = float( ( right + left ) / ( right - left ) );
+	m.m[2][1] = float( ( top + bottom ) / ( top - bottom ) );
 	m.m[2][2] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
-	m.m[2][3] = float( 2.0 * nearVal * farVal / ( nearVal - farVal ) );
-	m.m[3][2] = -1.0f;
+	m.m[2][3] = -1.0f;
+	m.m[3][2] = float( 2.0 * nearVal * farVal / ( nearVal - farVal ) );
 	m.m[3][3] = 0.0f;
 	return m;
 }
@@ -408,11 +408,11 @@ Matrix4 Matrix4::fromOrtho( double left, double right, double bottom, double top
 {
 	Matrix4	m;
 	m.m[0][0] = float( -2.0 / ( left - right ) );
-	m.m[0][3] = float( ( left + right ) / ( left - right ) );
 	m.m[1][1] = float( -2.0 / ( bottom - top ) );
-	m.m[1][3] = float( ( bottom + top ) / ( bottom - top ) );
 	m.m[2][2] = float( 2.0 / ( nearVal - farVal ) );
-	m.m[2][3] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
+	m.m[3][0] = float( ( left + right ) / ( left - right ) );
+	m.m[3][1] = float( ( bottom + top ) / ( bottom - top ) );
+	m.m[3][2] = float( ( nearVal + farVal ) / ( nearVal - farVal ) );
 	m.m[3][3] = 1.0f;
 	return m;
 }
