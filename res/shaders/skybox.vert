@@ -8,8 +8,16 @@ out vec4 D;
 
 out mat3 reflMatrix;
 
-uniform mat3 viewMatrix;
 uniform bool invertZAxis;
+
+uniform mat3 viewMatrix;
+uniform mat4 modelViewMatrix;
+uniform mat4 projectionMatrix;
+uniform vec4 lightSourcePosition0;	// W = environment map rotation (-1.0 to 1.0)
+uniform vec4 lightSourceDiffuse0;	// A = overall brightness
+uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone mapping)
+
+layout ( location = 0 ) in vec3 vertexPosition;
 
 mat3 rotateEnv( mat3 m, float rz )
 {
@@ -23,18 +31,18 @@ mat3 rotateEnv( mat3 m, float rz )
 
 void main( void )
 {
-	vec3 v = vec3(gl_ModelViewMatrix * gl_Vertex);
+	vec4 v = modelViewMatrix * vec4( vertexPosition, 1.0 );
 
-	reflMatrix = rotateEnv( viewMatrix, gl_LightSource[0].position.w * 3.14159265 );
+	reflMatrix = rotateEnv( viewMatrix, lightSourcePosition0.w * 3.14159265 );
 
 	ViewDir = vec3(-v.xy, 1.0);
-	LightDir = gl_LightSource[0].position.xyz;
+	LightDir = lightSourcePosition0.xyz;
 
-	A = gl_LightSource[0].ambient;
-	D = gl_LightSource[0].diffuse;
+	A = lightSourceAmbient;
+	D = lightSourceDiffuse0;
 
-	if (gl_ProjectionMatrix[3][3] == 1.0)
+	if ( projectionMatrix[3][3] == 1.0 )
 		gl_Position = vec4(0.0, 0.0, 2.0, 1.0);	// orthographic view is not supported
 	else
-		gl_Position = vec4((gl_ModelViewProjectionMatrix * gl_Vertex).xy, 1.0, 1.0);
+		gl_Position = vec4( ( projectionMatrix * v ).xy, 1.0, 1.0 );
 }
