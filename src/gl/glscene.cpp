@@ -102,11 +102,11 @@ Scene::~Scene()
 		delete renderer;
 }
 
-void Scene::setOpenGLContext( QOpenGLContext * context, QOpenGLFunctions * functions )
+void Scene::setOpenGLContext( QOpenGLContext * context )
 {
 	if ( renderer || !context )
 		return;
-	renderer = new Renderer( context, functions );
+	renderer = new Renderer( context );
 }
 
 void Scene::updateShaders()

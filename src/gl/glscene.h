@@ -54,7 +54,6 @@ class Renderer;
 class Shape;
 class QAction;
 class QOpenGLContext;
-class QOpenGLFunctions;
 
 class Scene final : public QObject
 {
@@ -63,7 +62,7 @@ public:
 	Scene( TexCache * texcache, QObject * parent = nullptr );
 	~Scene();
 
-	void setOpenGLContext( QOpenGLContext * context, QOpenGLFunctions * functions );
+	void setOpenGLContext( QOpenGLContext * context );
 	inline bool haveRenderer() const
 	{
 		return bool( renderer );
@@ -214,8 +213,6 @@ public:
 	QPersistentModelIndex currentIndex;
 
 	QVector<Shape *> shapes;
-
-	Matrix4 projectionMatrix;
 
 	BoundSphere bounds() const;
 
