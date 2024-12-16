@@ -266,8 +266,6 @@ public:
 	void ( *vertexAttrib4fv )( unsigned int index, const float * v );
 
 	Matrix	viewMatrix;
-	Matrix	normalMatrix;
-	Matrix4	modelViewMatrix;
 	Matrix4	projectionMatrix;
 	// W = environment map rotation (-1.0 to 1.0), unused for light sources 1 and 2
 	FloatVector4	lightSourcePosition0;

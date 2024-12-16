@@ -634,7 +634,7 @@ bool NifSkopeOpenGLContext::Program::uniSampler( BSShaderLightingProperty * bspr
 	int	uniSamp = uniLocation( var );
 	if ( uniSamp < 0 )
 		return true;
-	if ( !activateTextureUnit( texunit ) )
+	if ( !activateTextureUnit( f, texunit ) )
 		return false;
 
 	// TODO: On stream 155 bsprop->fileName can reference incorrect strings because
@@ -737,7 +737,7 @@ NifSkopeOpenGLContext::Program * NifSkopeOpenGLContext::useProgram( const QStrin
 {
 	Program *	prog = programs.value( name );
 	unsigned int	id = 0;
-	if ( prog )
+	if ( prog && prog->status )
 		id = prog->id;
 	fn->glUseProgram( id );
 	return prog;
@@ -751,9 +751,10 @@ void NifSkopeOpenGLContext::stopProgram()
 void NifSkopeOpenGLContext::setGlobalUniforms()
 {
 	for ( Program * p : programs ) {
+		if ( !p->status )
+			continue;
+		fn->glUseProgram( p->id );
 		p->uni3m( "viewMatrix", viewMatrix );
-		p->uni3m( "normalMatrix", normalMatrix );
-		p->uni4m( "modelViewMatrix", modelViewMatrix );
 		p->uni4m( "projectionMatrix", projectionMatrix );
 		p->uni4f( "lightSourcePosition0", lightSourcePosition0 );
 		p->uni4f( "lightSourceDiffuse0", lightSourceDiffuse0 );
@@ -763,6 +764,7 @@ void NifSkopeOpenGLContext::setGlobalUniforms()
 		p->uni4f( "lightSourcePosition2", lightSourcePosition2 );
 		p->uni4f( "lightSourceDiffuse2", lightSourceDiffuse2 );
 	}
+	fn->glUseProgram( 0 );
 }
 
 void NifSkopeOpenGLContext::drawShape(
@@ -785,12 +787,6 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 	QOpenGLFunctions_4_1_Core &	f = *( context.fn );
 	f.glGenVertexArrays( 1, &vao );
 	f.glBindVertexArray( vao );
-	GLsizei	stride = 0;
-	for ( std::uint32_t m = attrModeMask; m; m = m >> 4 ) {
-		if ( !( m & 8 ) )
-			stride += GLsizei( sizeof( float ) * ( m & 7 ) );
-	}
-	size_t	attrOffs = 0;
 	for ( size_t i = 0; attrModeMask; i++, attrModeMask = attrModeMask >> 4 ) {
 		size_t	nBytes = attrModeMask & 7;
 		if ( !nBytes )
@@ -807,13 +803,11 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 			else
 				context.vertexAttrib1f( GLuint( i ), attrData[i][0] );
 		} else {
-			const void *	p = reinterpret_cast< const void * >( attrOffs );
-			attrOffs = attrOffs + nBytes;
 			nBytes = nBytes * vertCnt;
 			f.glGenBuffers( 1, &( vbo[i] ) );
 			f.glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
 			f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( nBytes ), attrData[i], GL_STREAM_DRAW );
-			f.glVertexAttribPointer( GLuint( i ), GLint( attrModeMask & 7 ), GL_FLOAT, GL_FALSE, stride, p );
+			f.glVertexAttribPointer( GLuint( i ), GLint( attrModeMask & 7 ), GL_FLOAT, GL_FALSE, 0, (void *) 0 );
 			f.glEnableVertexAttribArray( GLuint( i ) );
 		}
 	}
@@ -827,10 +821,9 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 NifSkopeOpenGLContext::ShapeData::~ShapeData()
 {
 	QOpenGLFunctions_4_1_Core &	f = *fn;
-	f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, 0 );
 	f.glBindVertexArray( 0 );
-	f.glDeleteBuffers( 1, &ebo );
 	f.glDeleteVertexArrays( 1, &vao );
+	f.glDeleteBuffers( 1, &ebo );
 	std::uint32_t	m = attrMask;
 	for ( size_t i = 0; m; i++, m = m >> 4 ) {
 		if ( ( m & 7 ) && !( m & 8 ) )
@@ -841,12 +834,10 @@ NifSkopeOpenGLContext::ShapeData::~ShapeData()
 void NifSkopeOpenGLContext::ShapeData::drawShape( bool noBind )
 {
 	QOpenGLFunctions_4_1_Core &	f = *fn;
-	if ( !noBind ) {
+	if ( !noBind )
 		f.glBindVertexArray( vao );
-		f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ebo );
-	}
 	f.glDrawElements( GLenum( elementModeAndType >> 16 ),
-						GLsizei( numIndices ), GLenum( elementModeAndType & 0xFFFF ), nullptr );
+						GLsizei( numIndices ), GLenum( elementModeAndType & 0xFFFF ), (void *) 0 );
 }
 
 
