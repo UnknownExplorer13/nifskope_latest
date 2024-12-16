@@ -512,12 +512,7 @@ void Node::draw()
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LEQUAL );
 		glDepthMask( GL_TRUE );
-		glDisable( GL_TEXTURE_2D );
-		glDisable( GL_NORMALIZE );
-		glDisable( GL_LIGHTING );
-		glDisable( GL_COLOR_MATERIAL );
 		glEnable( GL_BLEND );
-		glDisable( GL_ALPHA_TEST );
 		glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 
 		glNormalColor();
@@ -578,13 +573,7 @@ void Node::drawSelection() const
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_ALWAYS );
 		glDepthMask( GL_TRUE );
-		glDisable( GL_TEXTURE_2D );
-		glDisable( GL_NORMALIZE );
-		glDisable( GL_LIGHTING );
-		glDisable( GL_COLOR_MATERIAL );
-		glEnable( GL_POINT_SMOOTH );
 		glEnable( GL_BLEND );
-		glDisable( GL_ALPHA_TEST );
 		glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 
 		glHighlightColor();
@@ -1479,13 +1468,8 @@ void Node::drawHavok()
 		glEnable( GL_DEPTH_TEST );
 		glDepthMask( GL_TRUE );
 		glDepthFunc( GL_LEQUAL );
-		glDisable( GL_TEXTURE_2D );
-		glDisable( GL_NORMALIZE );
-		glDisable( GL_LIGHTING );
-		glDisable( GL_COLOR_MATERIAL );
 		glEnable( GL_BLEND );
 		glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-		glDisable( GL_ALPHA_TEST );
 	}
 
 	glPointSize( GLView::Settings::vertexPointSize );
@@ -1746,13 +1730,8 @@ void Node::drawFurn()
 		glEnable( GL_DEPTH_TEST );
 		glDepthMask( GL_FALSE );
 		glDepthFunc( GL_LEQUAL );
-		glDisable( GL_TEXTURE_2D );
-		glDisable( GL_NORMALIZE );
-		glDisable( GL_LIGHTING );
-		glDisable( GL_COLOR_MATERIAL );
 		glDisable( GL_CULL_FACE );
 		glDisable( GL_BLEND );
-		glDisable( GL_ALPHA_TEST );
 		glColor4f( 1, 1, 1, 1 );
 		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 	}

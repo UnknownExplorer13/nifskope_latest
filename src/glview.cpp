@@ -342,7 +342,7 @@ void GLView::initializeGL()
 		std::exit( 1 );
 	}
 	glFuncs->initializeOpenGLFunctions();
-	scene->setOpenGLContext( glContext, glFuncs );
+	scene->setOpenGLContext( glContext );
 
 	GLenum err;
 
@@ -382,12 +382,10 @@ void GLView::updateShaders()
 	update();
 }
 
-void GLView::glProjection( int x, int y )
+void GLView::glProjection( [[maybe_unused]] int x, [[maybe_unused]] int y )
 {
-	Q_UNUSED( x ); Q_UNUSED( y );
-
-	glMatrixMode( GL_PROJECTION );
-	glLoadIdentity();
+	if ( !scene->haveRenderer() )
+		return;
 
 	BoundSphere bs = scene->view * scene->bounds();
 
@@ -413,12 +411,12 @@ void GLView::glProjection( int x, int y )
 
 		GLdouble h2 = std::tan( ( cfg.fov / Zoom ) / 360 * M_PI ) * nr;
 		GLdouble w2 = h2 * aspect;
-		scene->projectionMatrix = Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr );
+		scene->renderer->projectionMatrix = Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr );
 	} else {
 		// Orthographic View
 		GLdouble h2 = Dist / Zoom;
 		GLdouble w2 = h2 * aspect;
-		scene->projectionMatrix = Matrix4::fromOrtho( -w2, +w2, -h2, +h2, nr, fr );
+		scene->renderer->projectionMatrix = Matrix4::fromOrtho( -w2, +w2, -h2, +h2, nr, fr );
 	}
 }
 
@@ -427,27 +425,21 @@ void GLView::paintGL()
 {
 	updatePending = 0;
 
+	glDisable( GL_FRAMEBUFFER_SRGB );
+	glDepthMask( GL_TRUE );
+
 	if ( isDisabled || !scene->haveRenderer() ) [[unlikely]] {
 		glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT );
 		return;
 	}
 
-	// Save GL state
-	glPushAttrib( GL_ALL_ATTRIB_BITS );
-	glMatrixMode( GL_PROJECTION );
-	glPushMatrix();
-	glMatrixMode( GL_MODELVIEW );
-	glPushMatrix();
-
 	// Clear Viewport
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
 		glClearColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	}
 
-	glDisable( GL_FRAMEBUFFER_SRGB );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT );
-
 
 	// Compile the model
 	if ( doCompile ) [[unlikely]] {
@@ -504,63 +496,44 @@ void GLView::paintGL()
 
 	// Setup projection mode
 	glProjection();
-	glLoadIdentity();
 
 	// Draw the grid
-	if ( scene->hasOption(Scene::ShowGrid) ) {
-		glDisable( GL_ALPHA_TEST );
+	if ( false && scene->hasOption(Scene::ShowGrid) ) {
 		glDisable( GL_BLEND );
-		glDisable( GL_LIGHTING );
-		glDisable( GL_COLOR_MATERIAL );
 		glEnable( GL_DEPTH_TEST );
 		glDepthMask( GL_TRUE );
 		glDepthFunc( GL_LESS );
-		glDisable( GL_TEXTURE_2D );
-		glDisable( GL_NORMALIZE );
 
 		// Keep the grid "grounded" regardless of Up Axis
 		Transform gridTrans = viewTrans;
 		if ( cfg.upAxis != ZAxis )
 			gridTrans.rotation = viewTrans.rotation * ap.inverted();
 
-		glPushMatrix();
 		glLoadMatrix( gridTrans );
 
 		// TODO: Configurable grid in Settings
 		// 1024 game units, major lines every 128, minor lines every 64
 		drawGrid( 1024.0f * scale(), 16, 2 );
-
-		glPopMatrix();
 	}
 
-#ifndef QT_NO_DEBUG
+#if 0 && !defined(QT_NO_DEBUG)
 	// Debug scene bounds
 	glEnable( GL_DEPTH_TEST );
 	glDepthMask( GL_TRUE );
 	glDepthFunc( GL_LESS );
-	glPushMatrix();
 	glLoadMatrix( viewTrans );
 	if ( debugMode == DbgBounds ) {
 		BoundSphere bs = scene->bounds();
 		bs |= BoundSphere( Vector3(), axis );
 		drawSphere( bs.center, bs.radius );
 	}
-	glPopMatrix();
 #endif
 
 	FloatVector4	mat_amb( 0.0f, 0.0f, 0.0f, 1.0f );
 	FloatVector4	mat_diff( 0.0f, 0.0f, 0.0f, 1.0f );
-	FloatVector4	mat_spec( 0.0f, 0.0f, 0.0f, 1.0f );
 
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
-		if ( !scene->hasOption(Scene::DisableShaders) && scene->nifModel && scene->nifModel->getBSVersion() > 0 )
-			mat_diff[3] = 0.0f;
-
-		glShadeModel( GL_FLAT );
-		//glEnable( GL_LIGHTING );
-		glEnable( GL_LIGHT0 );
-		glLightModelfv( GL_LIGHT_MODEL_AMBIENT, &(mat_diff[0]) );
-		glMaterialfv( GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE, &(mat_diff[0]) );
+		mat_diff[3] = 0.0f;
 
 	} else if ( scene->hasOption(Scene::DoLighting) ) {
 		// Setup light
@@ -573,14 +546,13 @@ void GLView::paintGL()
 			v = m * v;
 			lightDir = Vector4( viewTrans.rotation * v, 0.0 );
 
-			if ( scene->hasVisMode(Scene::VisLightPos) ) {
+			if ( false && scene->hasVisMode(Scene::VisLightPos) ) {
 				glEnable( GL_BLEND );
 				glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 				glEnable( GL_DEPTH_TEST );
 				glDepthMask( GL_TRUE );
 				glDepthFunc( GL_LESS );
 
-				glPushMatrix();
 				glLoadMatrix( viewTrans );
 
 				glLineWidth( Settings::lineWidthAxes );
@@ -595,7 +567,6 @@ void GLView::paintGL()
 
 				drawDashLine( Vector3( 0, 0, 0 ), v * l, 30 );
 				drawSphere( v * l, axis / 10 );
-				glPopMatrix();
 				glDisable( GL_BLEND );
 			}
 		} else {
@@ -603,10 +574,7 @@ void GLView::paintGL()
 			lightDir[3] = planarAngle / 180.0f;
 		}
 
-		float amb = ambient;
-		if ( scene->hasOption(Scene::DisableShaders) )
-			amb *= 0.375f;
-		mat_amb = FloatVector4( amb );
+		mat_amb = FloatVector4( ambient );
 		mat_amb[3] = toneMapping;
 
 		const FloatVector4	a6( 0.02729229f, -0.03349948f, -0.93633725f, 0.0f );
@@ -625,45 +593,30 @@ void GLView::paintGL()
 		c *= brightnessL;
 		mat_diff = c;
 		mat_diff[3] = brightnessScale;
-		mat_spec = mat_diff;
 
-
-		glShadeModel( GL_SMOOTH );
-		//glEnable( GL_LIGHTING );
-		glEnable( GL_LIGHT0 );
-		glLightfv( GL_LIGHT0, GL_POSITION, lightDir.data() );
+		scene->renderer->lightSourcePosition0 = FloatVector4( lightDir );
 
 	} else {
-		float amb = scene->hasOption(Scene::DisableShaders) ? 0.0f : 0.5f;
-
-		mat_amb.blendValues( FloatVector4( amb ), 0x07 );
+		mat_amb.blendValues( FloatVector4( 0.5f ), 0x07 );
 		mat_diff = FloatVector4( 1.0f );
-
-
-		glShadeModel( GL_SMOOTH );
-		//glEnable( GL_LIGHTING );
-		glEnable( GL_LIGHT0 );
 	}
 
-	glLightfv( GL_LIGHT0, GL_AMBIENT, &(mat_amb[0]) );
-	glLightfv( GL_LIGHT0, GL_DIFFUSE, &(mat_diff[0]) );
-	glLightfv( GL_LIGHT0, GL_SPECULAR, &(mat_spec[0]) );
+	scene->renderer->viewMatrix = scene->view.rotation;
+	scene->renderer->lightSourceAmbient = mat_amb;
+	scene->renderer->lightSourceDiffuse0 = mat_diff;
+
+	scene->renderer->setGlobalUniforms();
 
 	if ( scene->hasOption(Scene::DoMultisampling) )
-		glEnable( GL_MULTISAMPLE_ARB );
+		glEnable( GL_MULTISAMPLE );
 
 #ifndef QT_NO_DEBUG
 	// Color Key debug
 	if ( debugMode == DbgColorPicker ) {
 		glDisable( GL_MULTISAMPLE );
 		glDisable( GL_LINE_SMOOTH );
-		glDisable( GL_TEXTURE_2D );
 		glDisable( GL_BLEND );
 		glDisable( GL_DITHER );
-		glDisable( GL_LIGHTING );
-		glShadeModel( GL_FLAT );
-		glDisable( GL_FOG );
-		glDisable( GL_MULTISAMPLE_ARB );
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LEQUAL );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
@@ -676,60 +629,41 @@ void GLView::paintGL()
 	// Draw the model
 	scene->draw();
 
-	if ( scene->hasOption(Scene::ShowAxes) ) {
+	if ( false && scene->hasOption(Scene::ShowAxes) ) {
 		// Resize viewport to small corner of screen
 		int axesSize = int( std::min< double >( 0.1 * pixelWidth, 125.0 * devicePixelRatioF() ) + 0.5 );
 		glViewport( 0, 0, axesSize, axesSize );
 
-		// Reset matrices
-		glMatrixMode( GL_PROJECTION );
-		glLoadIdentity();
+		static const QString	programName( "default.prog" );
+		Renderer::Program *	prog = scene->renderer->useProgram( programName );
 
-		// Square frustum
-		auto nr = 1.0;
-		auto fr = 250.0;
-		GLdouble h2 = tan( cfg.fov / 360 * M_PI ) * nr;
-		GLdouble w2 = h2;
-		glFrustum( -w2, +w2, -h2, +h2, nr, fr );
+		if ( prog ) {
+			// Square frustum
+			auto nr = 1.0;
+			auto fr = 250.0;
+			GLdouble h2 = tan( cfg.fov / 360 * M_PI ) * nr;
+			GLdouble w2 = h2;
+			prog->uni4m( "projectionMatrix", Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr ) );
 
-		// Reset matrices
-		glMatrixMode( GL_MODELVIEW );
-		glLoadIdentity();
+			Transform	viewTransTmp = viewTrans;
+			// Zoom out slightly
+			viewTransTmp.translation = { 0, 0, -150.0 };
+			prog->uni4m( "modelViewMatrix", viewTransTmp.toMatrix4() );
 
-		glPushMatrix();
+			// Find direction of axes
+			auto vtr = viewTransTmp.rotation;
+			QVector<float> axesDots = { vtr( 2, 0 ), vtr( 2, 1 ), vtr( 2, 2 ) };
 
-		// Store and reset viewTrans translation
-		auto viewTransOrig = viewTrans.translation;
+			drawAxesOverlay( { 0, 0, 0 }, 50.0, sortAxes( axesDots ) );
 
-		// Zoom out slightly
-		viewTrans.translation = { 0, 0, -150.0 };
-
-		// Load modified viewTrans
-		glLoadMatrix( viewTrans );
-
-		// Restore original viewTrans translation
-		viewTrans.translation = viewTransOrig;
-
-		// Find direction of axes
-		auto vtr = viewTrans.rotation;
-		QVector<float> axesDots = { vtr( 2, 0 ), vtr( 2, 1 ), vtr( 2, 2 ) };
-
-		drawAxesOverlay( { 0, 0, 0 }, 50.0, sortAxes( axesDots ) );
-
-		glPopMatrix();
+			scene->renderer->stopProgram();
+		}
 
 		// Restore viewport size
 		glViewport( 0, 0, pixelWidth, pixelHeight );
-		// Restore matrices
-		glProjection();
 	}
 
-	// Restore GL state
-	glPopAttrib();
-	glMatrixMode( GL_MODELVIEW );
-	glPopMatrix();
-	glMatrixMode( GL_PROJECTION );
-	glPopMatrix();
+	// TODO: Restore GL state
 
 	// Check for errors
 	GLenum err;
@@ -885,20 +819,14 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	QOpenGLFramebufferObject fbo( viewport[2], viewport[3], fboFmt );
 	fbo.bind();
 
-	glDisable( GL_LIGHTING );
+	float	savedClearColor[4];
+	glGetFloatv( GL_COLOR_CLEAR_VALUE, savedClearColor );
+
 	glDisable( GL_MULTISAMPLE );
-	glDisable( GL_MULTISAMPLE_ARB );
 	glDisable( GL_LINE_SMOOTH );
-	glDisable( GL_POINT_SMOOTH );
 	glDisable( GL_POLYGON_SMOOTH );
-	glDisable( GL_TEXTURE_1D );
-	glDisable( GL_TEXTURE_2D );
-	glDisable( GL_TEXTURE_3D );
-	glDisable( GL_ALPHA_TEST );
 	glDisable( GL_BLEND );
 	glDisable( GL_DITHER );
-	glDisable( GL_FOG );
-	glShadeModel( GL_FLAT );
 	glEnable( GL_DEPTH_TEST );
 	glDepthFunc( GL_LEQUAL );
 	glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
@@ -910,6 +838,10 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 		(scene->*df)();
 	}
 	Node::SELECTING = 0;
+
+	glClearColor( savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3] );
+	glEnable( GL_DITHER );
+	glEnable( GL_MULTISAMPLE );
 
 	fbo.release();
 
@@ -956,12 +888,6 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 	if ( !isValid() )
 		return {};
 
-	glPushAttrib( GL_ALL_ATTRIB_BITS );
-	glMatrixMode( GL_PROJECTION );
-	glPushMatrix();
-	glMatrixMode( GL_MODELVIEW );
-	glPushMatrix();
-
 	double	p = devicePixelRatioF();
 	int	wp = pixelWidth;
 	int	hp = pixelHeight;
@@ -985,12 +911,6 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 
 	int choose = -1, furn = -1;
 	choose = ::indexAt( model, scene, df, cycle, posScaled, /*out*/ furn );
-
-	glPopAttrib();
-	glMatrixMode( GL_MODELVIEW );
-	glPopMatrix();
-	glMatrixMode( GL_PROJECTION );
-	glPopMatrix();
 
 	QModelIndex chooseIndex;
 

@@ -49,13 +49,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! @file gltex.cpp TexCache management
 
-#ifdef WIN32
-static PFNGLACTIVETEXTUREPROC glActiveTexture = nullptr;
-static PFNGLCLIENTACTIVETEXTUREPROC glClientActiveTexture = nullptr;
-#endif
-
 int TexCache::num_texture_units = 0;
-int TexCache::num_txtunits_client = 0;
 int TexCache::pbrCubeMapResolution = 512;
 int TexCache::pbrImportanceSamples = 256;
 int TexCache::hdrToneMapLevel = 8;
@@ -77,20 +71,12 @@ float get_max_anisotropy()
 
 void initializeTextureUnits( const QOpenGLContext * context )
 {
-	if ( context->hasExtension( "GL_ARB_multitexture" ) ) {
-		GLint	tmp = 0;
-		glGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS, &tmp );
-		tmp = std::min( std::max( tmp, GLint(1) ), GLint(TexCache::maxTextureUnits) );
-		TexCache::num_texture_units = tmp;
-		glGetIntegerv( GL_MAX_TEXTURE_COORDS, &tmp );
-		TexCache::num_txtunits_client = std::max( tmp, GLint(1) );
+	GLint	tmp = 0;
+	glGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS, &tmp );
+	tmp = std::min( std::max( tmp, GLint(1) ), GLint(TexCache::maxTextureUnits) );
+	TexCache::num_texture_units = tmp;
 
-		//qDebug() << "texture units" << TexCache::num_texture_units;
-	} else {
-		qCWarning( nsGl ) << QObject::tr( "Multitexturing not supported." );
-		TexCache::num_texture_units = 0;
-		TexCache::num_txtunits_client = 0;
-	}
+	//qDebug() << "texture units" << TexCache::num_texture_units;
 
 	if ( context->hasExtension( "GL_EXT_texture_filter_anisotropic" ) ) {
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anisotropy );
@@ -98,53 +84,16 @@ void initializeTextureUnits( const QOpenGLContext * context )
 		//qDebug() << "maximum anisotropy" << max_anisotropy;
 	}
 
-#ifdef WIN32
-	if ( !glActiveTexture )
-		glActiveTexture = (PFNGLACTIVETEXTUREPROC)context->getProcAddress( "glActiveTexture" );
-
-	if ( !glClientActiveTexture )
-		glClientActiveTexture = (PFNGLCLIENTACTIVETEXTUREPROC)context->getProcAddress( "glClientActiveTexture" );
-#endif
-
 	initializeTextureLoaders( context );
 }
 
-bool activateTextureUnit( int stage )
+bool activateTextureUnit( QOpenGLFunctions_4_1_Core * fn, int stage )
 {
 	if ( stage >= TexCache::num_texture_units ) [[unlikely]]
-		return ( stage == 0 );
+		return false;
 
-	glActiveTexture( GL_TEXTURE0 + stage );
+	fn->glActiveTexture( GL_TEXTURE0 + stage );
 	return true;
-}
-
-bool activateClientTexture( int stage )
-{
-	if ( stage >= TexCache::num_txtunits_client ) [[unlikely]]
-		return ( stage == 0 );
-
-	glClientActiveTexture( GL_TEXTURE0 + stage );
-	return true;
-}
-
-void resetTextureUnits( int numTex )
-{
-	if ( !TexCache::num_texture_units ) {
-		glDisable( GL_TEXTURE_2D );
-		return;
-	}
-
-	for ( int x = std::min( std::max< int >( numTex, 1 ), TexCache::num_texture_units ); --x >= 0; ) {
-		glActiveTexture( GL_TEXTURE0 + x );
-		glDisable( GL_TEXTURE_2D );
-		glMatrixMode( GL_TEXTURE );
-		glLoadIdentity();
-		glMatrixMode( GL_MODELVIEW );
-	}
-	for ( int x = TexCache::num_txtunits_client; --x >= 0; ) {
-		glClientActiveTexture( GL_TEXTURE0 + x );
-		glDisableClientState( GL_TEXTURE_COORD_ARRAY );
-	}
 }
 
 
@@ -428,10 +377,6 @@ bool TexCache::bindCube( const QString & fname, const NifModel * nif, bool useSe
 	glTexParameteri( GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE );
 	glTexParameteri( GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	glTexParameteri( GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR );
-	glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	glMatrixMode( GL_TEXTURE );
-	glLoadIdentity();
-	glMatrixMode( GL_MODELVIEW );
 
 	return true;
 }

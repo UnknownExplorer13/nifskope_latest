@@ -39,6 +39,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QPersistentModelIndex>
 #include <QString>
 #include <QStringView>
+#include <QOpenGLFunctions_4_1_Core>
 
 
 //! @file gltex.h TexCache etc. header
@@ -176,7 +177,6 @@ public:
 	//! Number of texture units
 	enum	{ maxTextureUnits = 32 };
 	static int	num_texture_units;	// for glActiveTexture()
-	static int	num_txtunits_client;	// for glClientActiveTexture()
 	static int	pbrCubeMapResolution;
 	static int	pbrImportanceSamples;
 	static int	hdrToneMapLevel;
@@ -215,9 +215,7 @@ public:
 
 void initializeTextureUnits( const QOpenGLContext * );
 
-bool activateTextureUnit( int x );
-bool activateClientTexture( int x );
-void resetTextureUnits( int numTex = TexCache::maxTextureUnits );
+bool activateTextureUnit( QOpenGLFunctions_4_1_Core * fn, int x );
 
 float get_max_anisotropy();
 
