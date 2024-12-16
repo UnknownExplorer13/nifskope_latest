@@ -40,6 +40,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gamemanager.h"
 #include "libfo76utils/src/ddstxt16.hpp"
 #include "glview.h"
+#include "renderer.h"
 
 #include <QOpenGLContext>
 
@@ -455,11 +456,7 @@ bool TexturingProperty::bind( int id, const QString & fname )
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps > 1 ? textures[id].filter : GL_LINEAR );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, textures[id].wrapS );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, textures[id].wrapT );
-		glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-		glMatrixMode( GL_TEXTURE );
-		glLoadIdentity();
 
-		glMatrixMode( GL_MODELVIEW );
 		return true;
 	}
 
@@ -481,7 +478,7 @@ bool TexturingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoor
 
 bool TexturingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoords, int stage )
 {
-	return ( activateTextureUnit( stage ) && activateClientTexture( stage ) && bind( id, texcoords ) );
+	return ( activateTextureUnit( scene->renderer->fn, stage ) && bind( id, texcoords ) );
 }
 
 QString TexturingProperty::fileName( int id ) const
@@ -565,10 +562,6 @@ bool TextureProperty::bind()
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
-		glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-		glMatrixMode( GL_TEXTURE );
-		glLoadIdentity();
-		glMatrixMode( GL_MODELVIEW );
 		return true;
 	}
 
@@ -959,8 +952,10 @@ int BSShaderLightingProperty::getSFTexture( int & texunit, FloatVector4 & replUn
 		size_t	n = texturePath.length();
 		if ( ( n - 1 ) & ~( size_t(1023) ) )
 			break;		// empty path or not enough space in tmpBuf
-		if ( !( texunit >= 3 && texunit < TexCache::num_texture_units && activateTextureUnit( texunit ) ) )
+		if ( !( texunit >= 3 && texunit < TexCache::num_texture_units
+				&& activateTextureUnit( scene->renderer->fn, texunit ) ) ) {
 			break;
+		}
 
 		TexClampMode	clampMode = TexClampMode::WRAP_S_WRAP_T;
 		if ( uvStream ) {
@@ -1145,10 +1140,6 @@ bool BSShaderLightingProperty::bind( const QStringView & fname, bool forceTextur
 	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, get_max_anisotropy() );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
-	glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
-	glMatrixMode( GL_TEXTURE );
-	glLoadIdentity();
-	glMatrixMode( GL_MODELVIEW );
 	return true;
 }
 
