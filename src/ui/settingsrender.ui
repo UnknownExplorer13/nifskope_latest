@@ -112,26 +112,6 @@
             </property>
             <layout class="QFormLayout" name="formLayout_2">
              <item row="0" column="0">
-              <widget class="QLabel" name="lblUseShaders">
-               <property name="text">
-                <string>Use Shaders</string>
-               </property>
-               <property name="buddy">
-                <cstring>useShaders</cstring>
-               </property>
-              </widget>
-             </item>
-             <item row="0" column="1">
-              <widget class="QCheckBox" name="useShaders">
-               <property name="text">
-                <string/>
-               </property>
-               <property name="checked">
-                <bool>true</bool>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
               <widget class="QLabel" name="lblAA">
                <property name="text">
                 <string>Antialiasing</string>
@@ -141,7 +121,7 @@
                </property>
               </widget>
              </item>
-             <item row="1" column="1">
+             <item row="0" column="1">
               <widget class="QComboBox" name="antialiasing">
                <property name="maximumSize">
                 <size>
@@ -179,7 +159,7 @@
                </item>
               </widget>
              </item>
-             <item row="2" column="0">
+             <item row="1" column="0">
               <widget class="QLabel" name="lblDisableMSAALimit">
                <property name="text">
                 <string>Allow >4x AA on Linux</string>
@@ -189,7 +169,7 @@
                </property>
               </widget>
              </item>
-             <item row="2" column="1">
+             <item row="1" column="1">
               <widget class="QCheckBox" name="disableMSAALimit">
                <property name="text">
                 <string/>
@@ -199,7 +179,7 @@
                </property>
               </widget>
              </item>
-             <item row="3" column="0">
+             <item row="2" column="0">
               <widget class="QLabel" name="lblAF">
                <property name="text">
                 <string>Anisotropic Filtering</string>
@@ -209,7 +189,7 @@
                </property>
               </widget>
              </item>
-             <item row="3" column="1">
+             <item row="2" column="1">
               <widget class="QComboBox" name="anisotropicFiltering">
                <property name="maximumSize">
                 <size>
@@ -247,7 +227,7 @@
                </item>
               </widget>
              </item>
-             <item row="4" column="0" colspan="2">
+             <item row="3" column="0" colspan="2">
               <spacer name="horizontalSpacer">
                <property name="orientation">
                 <enum>Qt::Horizontal</enum>
@@ -263,7 +243,49 @@
                </property>
               </spacer>
              </item>
-             <item row="5" column="0">
+             <item row="4" column="0">
+              <widget class="QLabel" name="lblMeshCache">
+               <property name="text">
+                <string>Geometry Cache Size</string>
+               </property>
+               <property name="buddy">
+                <cstring>meshCacheSize</cstring>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QSpinBox" name="meshCacheSize">
+               <property name="minimum">
+                <number>8</number>
+               </property>
+               <property name="maximum">
+                <number>1024</number>
+               </property>
+               <property name="singleStep">
+                <number>8</number>
+               </property>
+               <property name="value">
+                <number>128</number>
+               </property>
+              </widget>
+             </item>
+             <item row="5" column="0" colspan="2">
+              <spacer name="horizontalSpacer_2">
+               <property name="orientation">
+                <enum>Qt::Horizontal</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Expanding</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>0</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item row="6" column="0">
               <widget class="QLabel" name="lblSFParallaxScale">
                <property name="text">
                 <string>Starfield POM Scale</string>
@@ -273,7 +295,7 @@
                </property>
               </widget>
              </item>
-             <item row="5" column="1">
+             <item row="6" column="1">
               <widget class="QDoubleSpinBox" name="sfParallaxScale">
                <property name="decimals">
                 <number>3</number>
@@ -292,7 +314,7 @@
                </property>
               </widget>
              </item>
-             <item row="6" column="0">
+             <item row="7" column="0">
               <widget class="QLabel" name="lblSFParallaxOffset">
                <property name="text">
                 <string>Starfield POM Offset</string>
@@ -302,7 +324,7 @@
                </property>
               </widget>
              </item>
-             <item row="6" column="1">
+             <item row="7" column="1">
               <widget class="QDoubleSpinBox" name="sfParallaxOffset">
                <property name="decimals">
                 <number>2</number>
@@ -321,7 +343,7 @@
                </property>
               </widget>
              </item>
-             <item row="7" column="0">
+             <item row="8" column="0">
               <widget class="QLabel" name="lblSFParallaxSteps">
                <property name="text">
                 <string>Starfield POM Steps</string>
@@ -331,7 +353,7 @@
                </property>
               </widget>
              </item>
-             <item row="7" column="1">
+             <item row="8" column="1">
               <widget class="QSpinBox" name="sfParallaxSteps">
                <property name="minimum">
                 <number>16</number>
@@ -401,7 +423,7 @@
            </widget>
           </item>
           <item>
-           <spacer name="horizontalSpacer_2">
+           <spacer name="horizontalSpacer_3">
             <property name="orientation">
              <enum>Qt::Horizontal</enum>
             </property>
@@ -934,7 +956,7 @@
               </widget>
              </item>
              <item row="4" column="0" colspan="4">
-              <spacer name="horizontalSpacer_3">
+              <spacer name="horizontalSpacer_4">
                <property name="orientation">
                 <enum>Qt::Horizontal</enum>
                </property>
