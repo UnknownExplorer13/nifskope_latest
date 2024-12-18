@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "gl/glnode.h" // Inherited
 #include "gl/gltools.h"
+#include "gl/glcontext.hpp"
 
 #include <QPersistentModelIndex>
 #include <QVector>
@@ -165,6 +166,8 @@ protected:
 	mutable bool needUpdateBounds = false;
 
 	bool isLOD = false;
+
+	NifSkopeOpenGLContext::ShapeDataHash	dataHash;
 };
 
 #endif

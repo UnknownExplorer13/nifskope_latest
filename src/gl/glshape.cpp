@@ -40,7 +40,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QDebug>
 #include <QElapsedTimer>
 
-Shape::Shape( Scene * s, const QModelIndex & b ) : Node( s, b )
+Shape::Shape( Scene * s, const QModelIndex & b ) : Node( s, b ), dataHash( 0, 0, 0, nullptr, nullptr )
 {
 	shapeNumber = s->shapes.count();
 }
@@ -67,6 +67,8 @@ void Shape::clear()
 
 	isLOD = false;
 	isDoubleSided = false;
+
+	dataHash.attrMask = 0;
 }
 
 void Shape::transform()
@@ -112,6 +114,7 @@ void Shape::updateImpl( const NifModel * nif, const QModelIndex & index )
 	Node::updateImpl( nif, index );
 
 	if ( index == iBlock ) {
+		dataHash.attrMask = 0;
 		shader = ""; // Reset stored shader so it can reassess conditions
 
 		bslsp = nullptr;

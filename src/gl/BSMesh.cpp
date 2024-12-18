@@ -106,7 +106,13 @@ void BSMesh::drawShapes( NodeList * secondPass )
 				attrMask = attrMask & ~0x80000000U;
 			}
 
-			scene->renderer->drawShape( (unsigned int) numVerts, attrMask, (unsigned int) ( numTriangles * 3 ),
+			if ( !dataHash.attrMask ) {
+				dataHash = NifSkopeOpenGLContext::ShapeDataHash(
+								std::uint32_t( numVerts ), attrMask, size_t( numTriangles ) * sizeof( Triangle ),
+								vertexAttrs, sortedTriangles.constData() );
+			}
+
+			scene->renderer->drawShape( dataHash, (unsigned int) ( numTriangles * 3 ),
 										GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, sortedTriangles.constData() );
 
 		} else {
@@ -537,6 +543,7 @@ void BSMesh::updateImpl(const NifModel* nif, const QModelIndex& index)
 void BSMesh::updateData(const NifModel* nif)
 {
 	qDebug() << "updateData";
+	dataHash.attrMask = 0;
 	resetSkinning();
 	resetVertexData();
 	resetSkeletonData();
