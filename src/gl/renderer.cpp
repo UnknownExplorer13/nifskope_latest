@@ -93,14 +93,17 @@ void Renderer::updateSettings()
 {
 	QSettings settings;
 
-	cfg.useShaders = settings.value( "Settings/Render/General/Use Shaders", true ).toBool();
-	int	tmp = settings.value( "Settings/Render/General/Cube Map Bgnd", 1 ).toInt();
+	int	tmp = settings.value( "Settings/Render/General/Mesh Cache Size", 128 ).toInt();
+	cfg.meshCacheSize = std::uint8_t( std::min< int >( std::max< int >( ( tmp + 4 ) >> 3, 1 ), 128 ) );
+	tmp = settings.value( "Settings/Render/General/Cube Map Bgnd", 1 ).toInt();
 	cfg.cubeBgndMipLevel = std::int8_t( std::min< int >( std::max< int >( tmp, -1 ), 6 ) );
 	cfg.sfParallaxMaxSteps = short( settings.value( "Settings/Render/General/Sf Parallax Steps", 200 ).toInt() );
 	cfg.sfParallaxScale = settings.value( "Settings/Render/General/Sf Parallax Scale", 0.0f).toFloat();
 	cfg.sfParallaxOffset = settings.value( "Settings/Render/General/Sf Parallax Offset", 0.5f).toFloat();
 	cfg.cubeMapPathFO76 = settings.value( "Settings/Render/General/Cube Map Path FO 76", "textures/shared/cubemaps/mipblur_defaultoutside1.dds" ).toString();
 	cfg.cubeMapPathSTF = settings.value( "Settings/Render/General/Cube Map Path STF", "textures/cubemaps/cell_cityplazacube.dds" ).toString();
+	setCacheLimits( std::uint32_t( cfg.meshCacheSize ) << 6, std::uint32_t( cfg.meshCacheSize ) << 9,
+					std::uint32_t( cfg.meshCacheSize ) << 23 );
 	TexCache::loadSettings( settings );
 }
 
@@ -1624,10 +1627,9 @@ void Renderer::drawSkyBox( Scene * scene )
 	glCullFace( GL_BACK );
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 
-	const float *	vertexAttrs[8];
-	vertexAttrs[0] = skyBoxVertices;
+	const float *	vertexPositions = skyBoxVertices;
 
-	drawShape( 8, 3, 36, GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, skyBoxTriangles );
+	drawShape( 8, 3, 36, GL_TRIANGLES, GL_UNSIGNED_SHORT, &vertexPositions, skyBoxTriangles );
 
 	stopProgram();
 }

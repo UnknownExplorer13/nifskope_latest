@@ -85,7 +85,7 @@ protected:
 
 	struct Settings
 	{
-		bool	useShaders = true;
+		std::uint8_t	meshCacheSize = 16;		// in units of 8 MiB
 		std::int8_t	cubeBgndMipLevel = 1;
 		short	sfParallaxMaxSteps = 200;
 		float	sfParallaxScale = 0.0f;
