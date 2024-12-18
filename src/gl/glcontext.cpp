@@ -686,6 +686,7 @@ NifSkopeOpenGLContext::NifSkopeOpenGLContext( QOpenGLContext * context )
 
 NifSkopeOpenGLContext::~NifSkopeOpenGLContext()
 {
+	flushCache();
 	releaseShaders();
 }
 
@@ -768,37 +769,256 @@ void NifSkopeOpenGLContext::setGlobalUniforms()
 }
 
 void NifSkopeOpenGLContext::drawShape(
-	unsigned int numVerts, unsigned int attrMask,
+	unsigned int numVerts, std::uint64_t attrMask,
 	unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
 	const float * const * attrData, const void * elementData )
 {
-	// TODO: cache data
-	ShapeData	d( *this, numVerts, attrMask, numIndices, elementMode, elementType, attrData, elementData );
-	d.drawShape( true );
+	size_t	elementDataSize = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
+	elementDataSize = elementDataSize * numIndices;
+	ShapeDataHash	h( numVerts, attrMask, elementDataSize, attrData, elementData );
+	drawShape( h, numIndices, elementMode, elementType, attrData, elementData );
 }
 
-NifSkopeOpenGLContext::ShapeData::ShapeData(
-	NifSkopeOpenGLContext & context, std::uint32_t vertCnt, std::uint32_t attrModeMask,
-	std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
+void NifSkopeOpenGLContext::drawShape(
+	const ShapeDataHash & h, unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
 	const float * const * attrData, const void * elementData )
-	:	fn( context.fn ), numVerts( vertCnt ), attrMask( attrModeMask ), numIndices( indicesCnt ),
-		elementModeAndType( ( elementMode << 16 ) | elementType ), vao( 0 ), ebo( 0 ), prev( nullptr ), next( nullptr )
 {
+	if ( ( cacheShapeCnt * 3U ) >= ( geometryCache.size() * 2U ) ) [[unlikely]]
+		rehashCache();
+
+	ShapeData *	d = nullptr;
+	std::uint32_t	m = std::uint32_t( geometryCache.size() - 1 );
+	std::uint32_t	i = h.hashFunction() & m;
+	for ( ; geometryCache[i]; i = ( i + 1 ) & m ) {
+		if ( geometryCache[i]->h == h ) {
+			d = geometryCache[i];
+			break;
+		}
+	}
+
+	QOpenGLFunctions_4_1_Core &	f = *fn;
+	if ( d ) {
+		if ( d != cacheLastItem ) {
+			d->prev->next = d->next;
+			d->next->prev = d->prev;
+			d->prev = cacheLastItem;
+			d->next = cacheLastItem->next;
+			d->prev->next = d;
+			d->next->prev = d;
+		}
+		cacheLastItem = d;
+		f.glBindVertexArray( d->vao );
+		f.glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
+		return;
+	}
+
+	d = new ShapeData( *this, h, attrData, elementData );
+	if ( !cacheLastItem ) {
+		d->prev = d;
+		d->next = d;
+	} else {
+		d->prev = cacheLastItem;
+		d->next = cacheLastItem->next;
+		d->prev->next = d;
+		d->next->prev = d;
+	}
+	cacheLastItem = d;
+	geometryCache[i] = d;
+	cacheShapeCnt++;
+	auto	bufferCountAndSize = d->h.getBufferCountAndSize();
+	cacheBufferCnt += bufferCountAndSize.first;
+	cacheBytesUsed += bufferCountAndSize.second;
+
+	f.glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
+}
+
+void NifSkopeOpenGLContext::setCacheLimits( size_t maxShapes, size_t maxBuffers, size_t maxBytes )
+{
+	cacheMaxShapes = std::uint32_t( maxShapes );
+	cacheMaxBuffers = std::uint32_t( maxBuffers );
+	cacheMaxBytes = std::uint32_t( maxBytes );
+}
+
+void NifSkopeOpenGLContext::shrinkCache( bool deleteAll )
+{
+	bool	rehashNeeded = false;
+
+	while ( cacheLastItem ) {
+		ShapeData *	d = cacheLastItem->next;
+
+		if ( deleteAll ) {
+			cacheShapeCnt = 0;
+			cacheBufferCnt = 0;
+			cacheBytesUsed = 0;
+		} else {
+			if ( cacheShapeCnt < cacheMaxShapes && cacheBufferCnt < cacheMaxBuffers && cacheBytesUsed < cacheMaxBytes )
+				break;
+			cacheShapeCnt--;
+			auto	bufferCountAndSize = d->h.getBufferCountAndSize();
+			cacheBufferCnt -= bufferCountAndSize.first;
+			cacheBytesUsed -= bufferCountAndSize.second;
+		}
+
+		if ( !rehashNeeded ) {
+			geometryCache.clear();
+			rehashNeeded = true;
+		}
+		if ( d->prev == d ) {
+			cacheLastItem = nullptr;
+		} else {
+			d->prev->next = d->next;
+			d->next->prev = d->prev;
+		}
+		delete d;
+	}
+
+	if ( rehashNeeded )
+		rehashCache();
+}
+
+void NifSkopeOpenGLContext::rehashCache()
+{
+	size_t	n = 256UL << std::bit_width( ( cacheShapeCnt * 3U ) >> 9U );
+	if ( geometryCache.size() == n )
+		return;
+
+	std::uint32_t	m = std::uint32_t( n - 1 );
+	geometryCache.clear();
+	geometryCache.resize( n, nullptr );
+	ShapeData *	d = cacheLastItem;
+	if ( !d )
+		return;
+	do {
+		std::uint32_t	i = d->h.hashFunction() & m;
+		while ( geometryCache[i] )
+			i = ( i + 1 ) & m;
+		geometryCache[i] = d;
+		d = d->prev;
+	} while ( d != cacheLastItem );
+}
+
+
+NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
+	std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
+	const float * const * attrData, const void * elementData )
+	: attrMask( attrModeMask ), numVerts( vertCnt ), elementBytes( std::uint32_t(elementDataSize) )
+{
+	std::uint32_t	hTmp[4] = { 0xBFBFBFDFU, 0xDFDFDFEFU, 0xEFEFEFFBU, 0xF7F7F77FU };
+	std::uint32_t	offs = 0;
+	for ( std::uint32_t i = 0; true; i++, attrModeMask = attrModeMask >> 4 ) {
+		const unsigned char *	p;
+		std::uint32_t	nBytes;
+		if ( !attrModeMask ) {
+			nBytes = elementDataSize;
+			p = reinterpret_cast< const unsigned char * >( elementData );
+		} else if ( ( nBytes = attrModeMask & 7 ) != 0 ) {
+			nBytes = nBytes * std::uint32_t( sizeof(float) );
+			if ( !( attrModeMask & 8 ) )
+				nBytes = nBytes * vertCnt;
+			p = reinterpret_cast< const unsigned char * >( attrData[i] );
+		}
+		while ( nBytes > 0 ) {
+			int	b = std::min< int >( std::countr_zero( offs ), std::bit_width( nBytes ) - 1 );
+			if ( b >= 5 ) {
+				std::uint32_t	h0 = hTmp[0];
+				std::uint32_t	h1 = hTmp[1];
+				std::uint32_t	h2 = hTmp[2];
+				std::uint32_t	h3 = hTmp[3];
+				do {
+					hashFunctionCRC32C< std::uint64_t >( h0, FileBuffer::readUInt64Fast( p ) );
+					hashFunctionCRC32C< std::uint64_t >( h1, FileBuffer::readUInt64Fast( p + 8 ) );
+					hashFunctionCRC32C< std::uint64_t >( h2, FileBuffer::readUInt64Fast( p + 16 ) );
+					hashFunctionCRC32C< std::uint64_t >( h3, FileBuffer::readUInt64Fast( p + 24 ) );
+					p = p + 32;
+					nBytes = nBytes - 32;
+				} while ( nBytes >= 32 );
+				hTmp[0] = h0;
+				hTmp[1] = h1;
+				hTmp[2] = h2;
+				hTmp[3] = h3;
+				continue;
+			}
+			std::uint32_t *	r = &( hTmp[offs >> 3] );
+			switch ( b ) {
+			case 0:
+				hashFunctionCRC32C< unsigned char >( *r, *p );
+				break;
+			case 1:
+				hashFunctionCRC32C< std::uint16_t >( *r, FileBuffer::readUInt16Fast( p ) );
+				break;
+			case 2:
+				hashFunctionCRC32C< std::uint32_t >( *r, FileBuffer::readUInt32Fast( p ) );
+				break;
+			case 3:
+				hashFunctionCRC32C< std::uint64_t >( *r, FileBuffer::readUInt64Fast( p ) );
+				break;
+			case 4:
+				hashFunctionCRC32C< std::uint64_t >( r[0], FileBuffer::readUInt64Fast( p ) );
+				hashFunctionCRC32C< std::uint64_t >( r[1], FileBuffer::readUInt64Fast( p + 8 ) );
+				break;
+			}
+			std::uint32_t	d = 1U << b;
+			p = p + d;
+			nBytes = nBytes - d;
+			offs = ( offs + d ) & 31;
+		}
+		if ( !attrModeMask )
+			break;
+	}
+	h[0] = ( std::uint64_t( hTmp[1] ) << 32 ) | hTmp[0];
+	h[1] = ( std::uint64_t( hTmp[3] ) << 32 ) | hTmp[2];
+}
+
+inline std::uint32_t NifSkopeOpenGLContext::ShapeDataHash::hashFunction() const
+{
+	std::uint32_t	tmp = 0xFFFFFFFFU;
+	hashFunctionCRC32C< std::uint64_t >( tmp, attrMask );
+	hashFunctionCRC32C< std::uint64_t >( tmp, h[0] );
+	hashFunctionCRC32C< std::uint64_t >( tmp, h[1] );
+	return tmp;
+}
+
+std::pair< std::uint32_t, std::uint32_t > NifSkopeOpenGLContext::ShapeDataHash::getBufferCountAndSize() const
+{
+	std::uint64_t	tmp = ( ~attrMask >> 3 ) & 0x1111111111111111ULL;
+	tmp = ( tmp * 7U ) & attrMask;
+	std::uint64_t	tmp2 = ( tmp | ( tmp >> 1 ) | ( tmp >> 2 ) ) & 0x1111111111111111ULL;
+	std::uint32_t	numBuffers = std::uint32_t( std::popcount( tmp2 ) + 1 );
+
+	tmp = ( tmp + ( tmp >> 4 ) ) & 0x0F0F0F0F0F0F0F0FULL;
+	tmp = tmp + ( tmp >> 8 );
+	tmp = tmp + ( tmp >> 16 );
+	tmp = tmp + ( tmp >> 32 );
+	std::uint32_t	totalDataSize = std::uint32_t( ( tmp & 0xFFU ) * sizeof( float ) * numVerts + elementBytes );
+
+	return std::pair< std::uint32_t, std::uint32_t >( numBuffers, totalDataSize );
+}
+
+
+NifSkopeOpenGLContext::ShapeData::ShapeData(
+	NifSkopeOpenGLContext & context, const ShapeDataHash & dataHash,
+	const float * const * attrData, const void * elementData )
+	: h( dataHash ), prev( nullptr ), next( nullptr ), fn( context.fn ), vao( 0 ), ebo( 0 )
+{
+	std::uint64_t	attrMask = dataHash.attrMask;
+	std::uint32_t	vertCnt = dataHash.numVerts;
+	std::uint32_t	elementDataSize = dataHash.elementBytes;
+
 	QOpenGLFunctions_4_1_Core &	f = *( context.fn );
 	f.glGenVertexArrays( 1, &vao );
 	f.glBindVertexArray( vao );
-	for ( size_t i = 0; attrModeMask; i++, attrModeMask = attrModeMask >> 4 ) {
-		size_t	nBytes = attrModeMask & 7;
+	for ( size_t i = 0; attrMask; i++, attrMask = attrMask >> 4 ) {
+		size_t	nBytes = attrMask & 7;
 		if ( !nBytes )
 			continue;
 		nBytes = nBytes * sizeof( float );
-		if ( attrModeMask & 8 ) {
+		if ( attrMask & 8 ) {
 			f.glDisableVertexAttribArray( GLuint( i ) );
-			if ( ( attrModeMask & 7 ) >= 4 )
+			if ( ( attrMask & 7 ) >= 4 )
 				context.vertexAttrib4fv( GLuint( i ), attrData[i] );
-			else if ( ( attrModeMask & 7 ) == 3 )
+			else if ( ( attrMask & 7 ) == 3 )
 				context.vertexAttrib3fv( GLuint( i ), attrData[i] );
-			else if ( ( attrModeMask & 7 ) == 2 )
+			else if ( ( attrMask & 7 ) == 2 )
 				context.vertexAttrib2fv( GLuint( i ), attrData[i] );
 			else
 				context.vertexAttrib1f( GLuint( i ), attrData[i][0] );
@@ -806,16 +1026,15 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 			nBytes = nBytes * vertCnt;
 			f.glGenBuffers( 1, &( vbo[i] ) );
 			f.glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
-			f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( nBytes ), attrData[i], GL_STREAM_DRAW );
-			f.glVertexAttribPointer( GLuint( i ), GLint( attrModeMask & 7 ), GL_FLOAT, GL_FALSE, 0, (void *) 0 );
+			f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( nBytes ), attrData[i], GL_STATIC_DRAW );
+			f.glVertexAttribPointer( GLuint( i ), GLint( attrMask & 7 ), GL_FLOAT, GL_FALSE, 0, (void *) 0 );
 			f.glEnableVertexAttribArray( GLuint( i ) );
 		}
 	}
 
 	f.glGenBuffers( 1, &ebo );
 	f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ebo );
-	std::uint32_t	elementSize = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
-	f.glBufferData( GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr( indicesCnt * elementSize ), elementData, GL_STREAM_DRAW );
+	f.glBufferData( GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr( elementDataSize ), elementData, GL_STATIC_DRAW );
 }
 
 NifSkopeOpenGLContext::ShapeData::~ShapeData()
@@ -824,85 +1043,10 @@ NifSkopeOpenGLContext::ShapeData::~ShapeData()
 	f.glBindVertexArray( 0 );
 	f.glDeleteVertexArrays( 1, &vao );
 	f.glDeleteBuffers( 1, &ebo );
-	std::uint32_t	m = attrMask;
+	std::uint64_t	m = h.attrMask;
 	for ( size_t i = 0; m; i++, m = m >> 4 ) {
 		if ( ( m & 7 ) && !( m & 8 ) )
 			f.glDeleteBuffers( 1, &( vbo[i] ) );
 	}
-}
-
-void NifSkopeOpenGLContext::ShapeData::drawShape( bool noBind )
-{
-	QOpenGLFunctions_4_1_Core &	f = *fn;
-	if ( !noBind )
-		f.glBindVertexArray( vao );
-	f.glDrawElements( GLenum( elementModeAndType >> 16 ),
-						GLsizei( numIndices ), GLenum( elementModeAndType & 0xFFFF ), (void *) 0 );
-}
-
-
-NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
-	std::uint32_t vertCnt, std::uint32_t attrModeMask,
-	std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
-	const float * const * attrData, const void * elementData )
-{
-	std::uint32_t	elementModeAndType = ( elementMode << 16 ) | elementType;
-	h[0] = ~vertCnt;
-	h[1] = ~attrModeMask;
-	h[2] = ~indicesCnt;
-	h[3] = ~elementModeAndType;
-	size_t	offs = 0;
-	size_t	i = 0;
-	do {
-		const unsigned char *	p;
-		size_t	nBytes;
-		if ( !attrModeMask ) {
-			nBytes = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
-			nBytes = nBytes * indicesCnt;
-			p = reinterpret_cast< const unsigned char * >( elementData );
-		} else {
-			nBytes = attrModeMask & 7;
-			if ( !nBytes )
-				continue;
-			nBytes = nBytes * sizeof( float );
-			if ( !( attrModeMask & 8 ) )
-				nBytes = nBytes * vertCnt;
-			p = reinterpret_cast< const unsigned char * >( attrData[i] );
-		}
-		do {
-			if ( nBytes >= 32 && !( offs & 31 ) ) [[likely]] {
-				hashFunctionCRC32C< std::uint64_t >( h[0], FileBuffer::readUInt64Fast( p ) );
-				hashFunctionCRC32C< std::uint64_t >( h[1], FileBuffer::readUInt64Fast( p + 8 ) );
-				hashFunctionCRC32C< std::uint64_t >( h[2], FileBuffer::readUInt64Fast( p + 16 ) );
-				hashFunctionCRC32C< std::uint64_t >( h[3], FileBuffer::readUInt64Fast( p + 24 ) );
-				p = p + 32;
-				nBytes = nBytes - 32;
-				offs = offs + 32;
-				continue;
-			}
-			std::uint32_t &	r = h[( offs >> 3 ) & 3];
-			if ( ( offs & 1 ) || nBytes < 2 ) {
-				hashFunctionCRC32C< unsigned char >( r, *p );
-				p++;
-				nBytes--;
-				offs++;
-			} else if ( ( offs & 2 ) || nBytes < 4 ) {
-				hashFunctionCRC32C< std::uint16_t >( r, FileBuffer::readUInt16Fast( p ) );
-				p = p + 2;
-				nBytes = nBytes - 2;
-				offs = offs + 2;
-			} else if ( ( offs & 4 ) || nBytes < 8 ) {
-				hashFunctionCRC32C< std::uint32_t >( r, FileBuffer::readUInt32Fast( p ) );
-				p = p + 4;
-				nBytes = nBytes - 4;
-				offs = offs + 4;
-			} else {
-				hashFunctionCRC32C< std::uint64_t >( r, FileBuffer::readUInt64Fast( p ) );
-				p = p + 8;
-				nBytes = nBytes - 8;
-				offs = offs + 8;
-			}
-		} while ( nBytes > 0 );
-	} while ( ( attrModeMask = attrModeMask >> 4 ) != 0U );
 }
 

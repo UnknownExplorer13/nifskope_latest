@@ -230,6 +230,22 @@ public:
 							int & texunit, const QString & alternate, uint clamp, const QString & forced = {} );
 	};
 
+	struct ShapeDataHash {
+		// M = (attrMask >> (N * 4)) & 15 = vertex attribute mode for attribute N:
+		//         0: unused attribute, attrData[N] can be nullptr or invalid
+		//    1 to 4: array of float, vec2, vec3 or vec4, attrData[N] is expected to contain vertCnt * M floats
+		//   9 to 12: static attribute that does not use a VBO, M & 7 floats are read from attrData[N]
+		std::uint64_t	attrMask;
+		std::uint32_t	numVerts;
+		std::uint32_t	elementBytes;
+		std::uint64_t	h[2];
+		ShapeDataHash( std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
+						const float * const * attrData, const void * elementData );
+		inline bool operator==( const ShapeDataHash & r ) const;
+		inline std::uint32_t hashFunction() const;
+		std::pair< std::uint32_t, std::uint32_t > getBufferCountAndSize() const;
+	};
+
 	NifSkopeOpenGLContext( QOpenGLContext * context );
 	~NifSkopeOpenGLContext();
 
@@ -244,15 +260,22 @@ public:
 
 	void setGlobalUniforms();
 
-	// (attrMask >> (N * 4)) & 15 = vertex attribute mode for attribute N, data is in attrData[N]
-	//                                  0: unused attribute (attrData[N] can be nullptr)
-	//                                  1 to 4: the data type is float, vec2, vec3 or vec4
-	//                              setting bit 3 of the mode enables the use of static data instead of an array
 	// elementMode = GL_POINTS, GL_LINES, GL_TRIANGLES, etc.
 	// elementType = GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT or GL_UNSIGNED_INT
-	void drawShape( unsigned int numVerts, unsigned int attrMask,
+	void drawShape( unsigned int numVerts, std::uint64_t attrMask,
 					unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
 					const float * const * attrData, const void * elementData );
+
+	void drawShape( const ShapeDataHash & h,
+					unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+					const float * const * attrData, const void * elementData );
+
+	void setCacheLimits( size_t maxShapes, size_t maxBuffers, size_t maxBytes );
+	void shrinkCache( bool deleteAll = false );
+	inline void flushCache()
+	{
+		shrinkCache( true );
+	}
 
 	//! Context Functions
 	QOpenGLFunctions_4_1_Core *	fn;
@@ -282,35 +305,46 @@ protected:
 	QMap<QString, Shader *> shaders;
 	QMap<QString, Program *> programs;
 
+	void rehashCache();
+
 	struct ShapeData {
-		QOpenGLFunctions_4_1_Core *	fn;
-		std::uint32_t	numVerts;
-		std::uint32_t	attrMask;
-		std::uint32_t	numIndices;
-		std::uint32_t	elementModeAndType;		// (mode << 16) | type
-		unsigned int	vao;					// vertex array object
-		unsigned int	ebo;					// element buffer object
-		unsigned int	vbo[8];					// vertex buffer objects
+		ShapeDataHash	h;
 		ShapeData *	prev;
 		ShapeData *	next;
-		ShapeData( NifSkopeOpenGLContext & context, std::uint32_t vertCnt, std::uint32_t attrModeMask,
-					std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
+		QOpenGLFunctions_4_1_Core *	fn;
+		unsigned int	vao;					// vertex array object
+		unsigned int	ebo;					// element buffer object
+		unsigned int	vbo[16];				// vertex buffer objects
+		ShapeData( NifSkopeOpenGLContext & context, const ShapeDataHash & dataHash,
 					const float * const * attrData, const void * elementData );
 		~ShapeData();
-		void drawShape( bool noBind = false );
 	};
 
-	struct ShapeDataHash {
-		std::uint32_t	h[4];
-		ShapeDataHash( std::uint32_t vertCnt, std::uint32_t attrModeMask,
-						std::uint32_t indicesCnt, std::uint32_t elementMode, std::uint32_t elementType,
-						const float * const * attrData, const void * elementData );
-		inline bool operator==( const ShapeDataHash & r ) const
-		{
-			return ( std::memcmp( &(h[0]), &(r.h[0]), sizeof( std::uint32_t ) * 4 ) == 0 );
-		}
-	};
+	std::vector< ShapeData * >	geometryCache;
+	ShapeData *	cacheLastItem = nullptr;
+	std::uint32_t	cacheShapeCnt = 0;
+	std::uint32_t	cacheBufferCnt = 0;
+	size_t	cacheBytesUsed = 0;
+	std::uint32_t	cacheMaxShapes = 1024;
+	std::uint32_t	cacheMaxBuffers = 8192;
+	size_t	cacheMaxBytes = 0x08000000;
 };
+
+inline bool NifSkopeOpenGLContext::ShapeDataHash::operator==( const ShapeDataHash & r ) const
+{
+#if ENABLE_X86_64_SIMD >= 2
+	if ( sizeof( ShapeDataHash ) == sizeof( YMM_UInt32 ) ) {
+		YMM_UInt32	a, b;
+		std::memcpy( &a, this, sizeof( YMM_UInt32 ) );
+		std::memcpy( &b, &r, sizeof( YMM_UInt32 ) );
+		a = a ^ b;
+		bool	z;
+		__asm__ ( "vptest %t2, %t1" : "=@ccz" ( z ) : "x" ( a ), "x" ( b ) );
+		return z;
+	}
+#endif
+	return ( std::memcmp( this, &r, sizeof( ShapeDataHash ) ) == 0 );
+}
 
 #endif
 

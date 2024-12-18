@@ -126,6 +126,8 @@ void Scene::clear( [[maybe_unused]] bool flushTextures )
 
 	//if ( flushTextures )
 	textures->flush();
+	if ( renderer )
+		renderer->flushCache();
 
 	sceneBoundsValid = timeBoundsValid = false;
 

@@ -71,7 +71,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QOpenGLFunctions>
 #include <QOpenGLFramebufferObject>
 
-
 // NOTE: The FPS define is a frame limiter,
 //	NOT the guaranteed FPS in the viewport.
 //	Also the QTimer is integer milliseconds
@@ -82,6 +81,10 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #define ZOOM_MIN 1.0
 #define ZOOM_MAX 1000.0
 
+#define DEBUG_FRAME_TIME 0
+#if DEBUG_FRAME_TIME
+#  include <chrono>
+#endif
 
 //! @file glview.cpp GLView implementation
 
@@ -110,7 +113,7 @@ GLView::GLView( QWindow * p )
 	fmt.setOption( QSurfaceFormat::DeprecatedFunctions, false );
 
 	// V-Sync
-	fmt.setSwapInterval( 1 );
+	fmt.setSwapInterval( DEBUG_FRAME_TIME ? 0 : 1 );
 	fmt.setSwapBehavior( QSurfaceFormat::DoubleBuffer );
 
 	fmt.setDepthBufferSize( 24 );
@@ -663,12 +666,27 @@ void GLView::paintGL()
 		glViewport( 0, 0, pixelWidth, pixelHeight );
 	}
 
-	// TODO: Restore GL state
+	scene->renderer->shrinkCache();
 
 	// Check for errors
 	GLenum err;
 	while ( ( err = glGetError() ) != GL_NO_ERROR )
 		qDebug() << tr( "glview.cpp - GL ERROR (paint): " ) << getGLErrorString( int(err) );
+
+#if DEBUG_FRAME_TIME
+	static std::chrono::steady_clock::time_point	prvTime = std::chrono::steady_clock::now();
+	static float	frameTimes[8] = { 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f };
+	static unsigned int	frameTimeIndex = 0;
+	auto	t = std::chrono::steady_clock::now();
+	double	dt = double( std::chrono::duration_cast< std::chrono::microseconds >( t - prvTime ).count() ) / 8000.0;
+	prvTime = t;
+	frameTimes[frameTimeIndex & 7] = float( dt );
+	frameTimeIndex++;
+	float	avgTime = 0.0f;
+	for ( int i = 0; i < 8; i++ )
+		avgTime += frameTimes[i];
+	std::fprintf( stderr, "Average frame time = %.2f ms\n", avgTime );
+#endif
 
 	emit paintUpdate();
 }
