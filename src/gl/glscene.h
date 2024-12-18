@@ -112,7 +112,7 @@ public:
 		DoMultisampling = 0x1000,
 		DoLighting = 0x2000,
 		DoCubeMapping = 0x4000,
-		DisableShaders = 0x8000,
+		DisableShaders = 0x8000,	// unsupported with core profile OpenGL
 		ShowHidden = 0x10000,
 		DoSkinning = 0x20000,
 		DoErrorColor = 0x40000
