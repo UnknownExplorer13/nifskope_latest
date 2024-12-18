@@ -920,41 +920,48 @@ NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
 		while ( nBytes > 0 ) {
 			int	b = std::min< int >( std::countr_zero( offs ), std::bit_width( nBytes ) - 1 );
 			if ( b >= 5 ) {
-				std::uint32_t	h0 = hTmp[0];
-				std::uint32_t	h1 = hTmp[1];
-				std::uint32_t	h2 = hTmp[2];
-				std::uint32_t	h3 = hTmp[3];
+				std::uint64_t	h0 = hTmp[0];
+				std::uint64_t	h1 = hTmp[1];
+				std::uint64_t	h2 = hTmp[2];
+				std::uint64_t	h3 = hTmp[3];
 				do {
-					hashFunctionCRC32C< std::uint64_t >( h0, FileBuffer::readUInt64Fast( p ) );
-					hashFunctionCRC32C< std::uint64_t >( h1, FileBuffer::readUInt64Fast( p + 8 ) );
-					hashFunctionCRC32C< std::uint64_t >( h2, FileBuffer::readUInt64Fast( p + 16 ) );
-					hashFunctionCRC32C< std::uint64_t >( h3, FileBuffer::readUInt64Fast( p + 24 ) );
+					hashFunctionUInt64( h0, FileBuffer::readUInt64Fast( p ) );
+					hashFunctionUInt64( h1, FileBuffer::readUInt64Fast( p + 8 ) );
+					hashFunctionUInt64( h2, FileBuffer::readUInt64Fast( p + 16 ) );
+					hashFunctionUInt64( h3, FileBuffer::readUInt64Fast( p + 24 ) );
 					p = p + 32;
 					nBytes = nBytes - 32;
 				} while ( nBytes >= 32 );
-				hTmp[0] = h0;
-				hTmp[1] = h1;
-				hTmp[2] = h2;
-				hTmp[3] = h3;
+				hTmp[0] = std::uint32_t( h0 );
+				hTmp[1] = std::uint32_t( h1 );
+				hTmp[2] = std::uint32_t( h2 );
+				hTmp[3] = std::uint32_t( h3 );
 				continue;
 			}
 			std::uint32_t *	r = &( hTmp[offs >> 3] );
+			std::uint64_t	tmp;
 			switch ( b ) {
 			case 0:
-				hashFunctionCRC32C< unsigned char >( *r, *p );
+				hashFunctionUInt32( *r, *p );
 				break;
 			case 1:
-				hashFunctionCRC32C< std::uint16_t >( *r, FileBuffer::readUInt16Fast( p ) );
+				hashFunctionUInt32( *r, FileBuffer::readUInt16Fast( p ) );
 				break;
 			case 2:
-				hashFunctionCRC32C< std::uint32_t >( *r, FileBuffer::readUInt32Fast( p ) );
+				hashFunctionUInt32( *r, FileBuffer::readUInt32Fast( p ) );
 				break;
 			case 3:
-				hashFunctionCRC32C< std::uint64_t >( *r, FileBuffer::readUInt64Fast( p ) );
+				tmp = *r;
+				hashFunctionUInt64( tmp, FileBuffer::readUInt64Fast( p ) );
+				*r = std::uint32_t( tmp );
 				break;
 			case 4:
-				hashFunctionCRC32C< std::uint64_t >( r[0], FileBuffer::readUInt64Fast( p ) );
-				hashFunctionCRC32C< std::uint64_t >( r[1], FileBuffer::readUInt64Fast( p + 8 ) );
+				tmp = r[0];
+				hashFunctionUInt64( tmp, FileBuffer::readUInt64Fast( p ) );
+				r[0] = std::uint32_t( tmp );
+				tmp = r[1];
+				hashFunctionUInt64( tmp, FileBuffer::readUInt64Fast( p + 8 ) );
+				r[1] = std::uint32_t( tmp );
 				break;
 			}
 			std::uint32_t	d = 1U << b;
