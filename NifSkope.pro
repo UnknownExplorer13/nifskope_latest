@@ -228,7 +228,8 @@ HEADERS += \
 	lib/meshoptimizer/src/meshoptimizer.h \
 	lib/stb_image.h \
 	lib/stb_image_write.h \
-	lib/tiny_gltf.h
+	lib/tiny_gltf.h \
+	lib/xxhash.h
 
 SOURCES += \
 	src/data/nifitem.cpp \

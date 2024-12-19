@@ -54,6 +54,9 @@ Syoyo Fujita, Aurélien Chatelain and many contributors under the MIT License.
 [JSON for Modern C++](https://github.com/nlohmann/json) library is copyright (c)
 2013-2023 by Niels Lohmann, MIT License.
 
+[xxHash](https://github.com/Cyan4973/xxHash) is copyright (c) 2012-2023 by
+Yann Collet, BSD 2-Clause License.
+
 NOTICE
 
 Parts of NifSkope (i.e. included libraries) might be subject to
