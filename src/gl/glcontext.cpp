@@ -898,84 +898,6 @@ void NifSkopeOpenGLContext::rehashCache()
 }
 
 
-NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
-	std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
-	const float * const * attrData, const void * elementData )
-	: attrMask( attrModeMask ), numVerts( vertCnt ), elementBytes( std::uint32_t(elementDataSize) )
-{
-	std::uint32_t	hTmp[4] = { 0xBFBFBFDFU, 0xDFDFDFEFU, 0xEFEFEFFBU, 0xF7F7F77FU };
-	std::uint32_t	offs = 0;
-	for ( std::uint32_t i = 0; true; i++, attrModeMask = attrModeMask >> 4 ) {
-		const unsigned char *	p;
-		std::uint32_t	nBytes;
-		if ( !attrModeMask ) {
-			nBytes = elementDataSize;
-			p = reinterpret_cast< const unsigned char * >( elementData );
-		} else if ( ( nBytes = attrModeMask & 7 ) != 0 ) {
-			nBytes = nBytes * std::uint32_t( sizeof(float) );
-			if ( !( attrModeMask & 8 ) )
-				nBytes = nBytes * vertCnt;
-			p = reinterpret_cast< const unsigned char * >( attrData[i] );
-		}
-		while ( nBytes > 0 ) {
-			int	b = std::min< int >( std::countr_zero( offs ), std::bit_width( nBytes ) - 1 );
-			if ( b >= 5 ) {
-				std::uint64_t	h0 = hTmp[0];
-				std::uint64_t	h1 = hTmp[1];
-				std::uint64_t	h2 = hTmp[2];
-				std::uint64_t	h3 = hTmp[3];
-				do {
-					hashFunctionUInt64( h0, FileBuffer::readUInt64Fast( p ) );
-					hashFunctionUInt64( h1, FileBuffer::readUInt64Fast( p + 8 ) );
-					hashFunctionUInt64( h2, FileBuffer::readUInt64Fast( p + 16 ) );
-					hashFunctionUInt64( h3, FileBuffer::readUInt64Fast( p + 24 ) );
-					p = p + 32;
-					nBytes = nBytes - 32;
-				} while ( nBytes >= 32 );
-				hTmp[0] = std::uint32_t( h0 );
-				hTmp[1] = std::uint32_t( h1 );
-				hTmp[2] = std::uint32_t( h2 );
-				hTmp[3] = std::uint32_t( h3 );
-				continue;
-			}
-			std::uint32_t *	r = &( hTmp[offs >> 3] );
-			std::uint64_t	tmp;
-			switch ( b ) {
-			case 0:
-				hashFunctionUInt32( *r, *p );
-				break;
-			case 1:
-				hashFunctionUInt32( *r, FileBuffer::readUInt16Fast( p ) );
-				break;
-			case 2:
-				hashFunctionUInt32( *r, FileBuffer::readUInt32Fast( p ) );
-				break;
-			case 3:
-				tmp = *r;
-				hashFunctionUInt64( tmp, FileBuffer::readUInt64Fast( p ) );
-				*r = std::uint32_t( tmp );
-				break;
-			case 4:
-				tmp = r[0];
-				hashFunctionUInt64( tmp, FileBuffer::readUInt64Fast( p ) );
-				r[0] = std::uint32_t( tmp );
-				tmp = r[1];
-				hashFunctionUInt64( tmp, FileBuffer::readUInt64Fast( p + 8 ) );
-				r[1] = std::uint32_t( tmp );
-				break;
-			}
-			std::uint32_t	d = 1U << b;
-			p = p + d;
-			nBytes = nBytes - d;
-			offs = ( offs + d ) & 31;
-		}
-		if ( !attrModeMask )
-			break;
-	}
-	h[0] = ( std::uint64_t( hTmp[1] ) << 32 ) | hTmp[0];
-	h[1] = ( std::uint64_t( hTmp[3] ) << 32 ) | hTmp[2];
-}
-
 inline std::uint32_t NifSkopeOpenGLContext::ShapeDataHash::hashFunction() const
 {
 	std::uint32_t	tmp = 0xFFFFFFFFU;
@@ -1055,5 +977,38 @@ NifSkopeOpenGLContext::ShapeData::~ShapeData()
 		if ( ( m & 7 ) && !( m & 8 ) )
 			f.glDeleteBuffers( 1, &( vbo[i] ) );
 	}
+}
+
+
+#define XXH_INLINE_ALL 1
+#include "xxhash.h"
+
+NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
+	std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
+	const float * const * attrData, const void * elementData )
+	: attrMask( attrModeMask ), numVerts( vertCnt ), elementBytes( std::uint32_t(elementDataSize) )
+{
+	XXH3_state_t	xxhState;
+	XXH3_128bits_reset( &xxhState );
+	for ( std::uint32_t i = 0; true; i++, attrModeMask = attrModeMask >> 4 ) {
+		const void *	p;
+		size_t	nBytes;
+		if ( !attrModeMask ) {
+			nBytes = elementDataSize;
+			p = elementData;
+		} else if ( ( nBytes = attrModeMask & 7 ) != 0 ) {
+			nBytes = nBytes * sizeof( float );
+			if ( !( attrModeMask & 8 ) )
+				nBytes = nBytes * vertCnt;
+			p = attrData[i];
+		}
+		if ( nBytes > 0 )
+			XXH3_128bits_update( &xxhState, p, nBytes );
+		if ( !attrModeMask )
+			break;
+	}
+	XXH128_hash_t	xxhResult = XXH3_128bits_digest( &xxhState );
+	h[0] = xxhResult.low64;
+	h[1] = xxhResult.high64;
 }
 
