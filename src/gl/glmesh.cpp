@@ -1290,5 +1290,11 @@ void Mesh::drawSelection() const
 
 QString Mesh::textStats() const
 {
-	return Node::textStats() + QString( "\nshader: %1\n" ).arg( shader );
+	QString	tmp = Node::textStats();
+	if ( shader ) {
+		tmp.append( QLatin1StringView( "\nshader: " ) );
+		tmp.append( QUtf8StringView( shader->name.data(), qsizetype( shader->name.length() ) ) );
+	}
+	tmp.append( QChar('\n') );
+	return tmp;
 }

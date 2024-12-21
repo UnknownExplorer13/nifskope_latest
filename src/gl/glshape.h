@@ -136,8 +136,8 @@ protected:
 
 	void resetSkeletonData();
 
-	//! Holds the name of the shader, or "" if no shader
-	QString shader = "";
+	//! Holds the shader program used by this shape
+	NifSkopeOpenGLContext::Program * shader = nullptr;
 
 	//! Shader property
 	BSShaderLightingProperty * bssp = nullptr;

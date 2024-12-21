@@ -637,8 +637,7 @@ void GLView::paintGL()
 		int axesSize = int( std::min< double >( 0.1 * pixelWidth, 125.0 * devicePixelRatioF() ) + 0.5 );
 		glViewport( 0, 0, axesSize, axesSize );
 
-		static const QString	programName( "default.prog" );
-		Renderer::Program *	prog = scene->renderer->useProgram( programName );
+		Renderer::Program *	prog = scene->renderer->useProgram( "default.prog" );
 
 		if ( prog ) {
 			// Square frustum

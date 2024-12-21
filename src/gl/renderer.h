@@ -68,7 +68,7 @@ public:
 	bool initialize();
 
 	//! Set up shader program
-	QString setupProgram( Shape *, const QString & hint = {} );
+	Program * setupProgram( Shape *, Program * hint = nullptr );
 
 public slots:
 	void updateSettings();
@@ -93,8 +93,6 @@ protected:
 		QString	cubeMapPathFO76;
 		QString	cubeMapPathSTF;
 	} cfg;
-
-	unsigned char	fixedFuncTexUnits = 0;
 
 public:
 	void drawSkyBox( Scene * scene );

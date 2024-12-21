@@ -115,7 +115,7 @@ void Shape::updateImpl( const NifModel * nif, const QModelIndex & index )
 
 	if ( index == iBlock ) {
 		dataHash.attrMask = 0;
-		shader = ""; // Reset stored shader so it can reassess conditions
+		shader = nullptr; // Reset stored shader so it can reassess conditions
 
 		bslsp = nullptr;
 		bsesp = nullptr;

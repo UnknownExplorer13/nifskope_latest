@@ -107,31 +107,27 @@ void Renderer::updateSettings()
 	TexCache::loadSettings( settings );
 }
 
-QString Renderer::setupProgram( Shape * mesh, const QString & hint )
+NifSkopeOpenGLContext::Program * Renderer::setupProgram( Shape * mesh, Program * hint )
 {
-	const NifModel *	nif;
-	if ( hint.isNull()
-		|| ( nif = mesh->scene->nifModel ) == nullptr
-		|| ( nif->getBSVersion() == 0 ) ) {
+	const NifModel *	nif = mesh->scene->nifModel;
+	if ( nif == nullptr || nif->getBSVersion() == 0 ) {
 		setupFixedFunction( mesh );
-		return QString();
+		return currentProgram;
 	}
 
-	if ( !hint.isEmpty() ) {
-		Program * program = programs.value( hint );
-		if ( program && program->status ) {
-			fn->glUseProgram( program->id );
-			bool	setupStatus;
-			if ( nif->getBSVersion() >= 170 )
-				setupStatus = setupProgramCE2( nif, program, mesh );
-			else if ( nif->getBSVersion() >= 83 )
-				setupStatus = setupProgramCE1( nif, program, mesh );
-			else
-				setupStatus = setupProgramFO3( nif, program, mesh );
-			if ( setupStatus )
-				return program->name;
-			stopProgram();
-		}
+	if ( hint && hint->status ) {
+		Program * program = hint;
+		fn->glUseProgram( program->id );
+		bool	setupStatus;
+		if ( nif->getBSVersion() >= 170 )
+			setupStatus = setupProgramCE2( nif, program, mesh );
+		else if ( nif->getBSVersion() >= 83 )
+			setupStatus = setupProgramCE1( nif, program, mesh );
+		else
+			setupStatus = setupProgramFO3( nif, program, mesh );
+		if ( setupStatus )
+			return program;
+		stopProgram();
 	}
 
 	QVector<QModelIndex> iBlocks;
@@ -146,8 +142,8 @@ QString Renderer::setupProgram( Shape * mesh, const QString & hint )
 		}
 	}
 
-	for ( Program * program : programs ) {
-		if ( program->status && program->conditions.eval( nif, iBlocks ) ) {
+	for ( Program * program = programsLinked; program; program = program->nextProgram ) {
+		if ( !program->conditions.isEmpty() && program->conditions.eval( nif, iBlocks ) ) {
 			fn->glUseProgram( program->id );
 			bool	setupStatus;
 			if ( nif->getBSVersion() >= 170 )
@@ -157,13 +153,13 @@ QString Renderer::setupProgram( Shape * mesh, const QString & hint )
 			else
 				setupStatus = setupProgramFO3( nif, program, mesh );
 			if ( setupStatus )
-				return program->name;
+				return program;
 			stopProgram();
 		}
 	}
 
 	setupFixedFunction( mesh );
-	return QString();
+	return currentProgram;
 }
 
 static int setFlipbookParameters( const CE2Material::Material & m, FloatVector4 & uvScaleAndOffset )
@@ -1564,7 +1560,6 @@ void Renderer::setupFixedFunction( Shape * mesh )
 	} else {
 		glDisable( GL_TEXTURE_2D );
 	}
-	fixedFuncTexUnits = (unsigned char) stage;
 }
 
 void Renderer::drawSkyBox( Scene * scene )
@@ -1586,8 +1581,7 @@ void Renderer::drawSkyBox( Scene * scene )
 
 	const NifModel *	nif = scene->nifModel;
 	quint32	bsVersion = nif->getBSVersion();
-	static const QString	programName = "skybox.prog";
-	Program *	prog = useProgram( programName );
+	Program *	prog = useProgram( "skybox.prog" );
 	if ( !prog )
 		return;
 
