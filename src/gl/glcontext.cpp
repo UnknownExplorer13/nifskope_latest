@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gltex.h"
 #include "glproperty.h"
 
+#include <chrono>
 #include <QDir>
 #include <QOpenGLContext>
 #include <QOpenGLVersionFunctionsFactory>
@@ -234,29 +235,112 @@ void NifSkopeOpenGLContext::ConditionGroup::addCondition( Condition * c )
 	conditions.append( c );
 }
 
-NifSkopeOpenGLContext::Shader::Shader( const QString & n, unsigned int t, QOpenGLFunctions_4_1_Core * fn )
-	: f( fn ), name( n ), id( 0 ), status( false ), type( t )
+NifSkopeOpenGLContext::Shader::Shader( const std::string_view & n, unsigned int t, QOpenGLFunctions_4_1_Core * fn )
+	: f( fn ), name( n ), id( 0 ), status( false ), isProgram( !t )
 {
-	id = f->glCreateShader( type );
+	if ( t )
+		id = f->glCreateShader( t );
 }
 
 NifSkopeOpenGLContext::Shader::~Shader()
 {
-	if ( id )
+	if ( id && !isProgram )
 		f->glDeleteShader( id );
+}
+
+void NifSkopeOpenGLContext::Shader::clear()
+{
+	if ( isProgram ) {
+		static_cast< Program * >( this )->clear();
+		return;
+	}
+	if ( id ) {
+		f->glDeleteShader( id );
+		id = 0;
+	}
+	status = false;
+	isProgram = false;
+}
+
+void NifSkopeOpenGLContext::Shader::printCompileError( const QString & err )
+{
+	status = false;
+	QString	tmp;
+	tmp.append( QUtf8StringView( name.data(), qsizetype( name.length() ) ) );
+	tmp.append( QLatin1StringView( ":\r\n\r\n" ) );
+	tmp.append( err );
+	Message::append( QObject::tr( "There were errors during shader compilation" ), tmp );
+}
+
+static QByteArray loadShaderFile( const QString & filepath, int includeDepth = 0 )
+{
+	QFile file( filepath );
+
+	if ( !file.open( QIODevice::ReadOnly ) )
+		throw QString( "couldn't open %1 for read access" ).arg( filepath );
+
+	QByteArray	data = file.readAll();
+	qsizetype	n = 0;
+	while ( n < data.size() && ( n = data.indexOf( '#', n ) ) >= 0 ) {
+		qsizetype	includePos = n;
+		bool	isInclude = true;
+		while ( includePos > 0 ) {
+			char	c = data.at( includePos - 1 );
+			if ( c == '\n' )
+				break;
+			includePos--;
+			if ( c == ' ' || c == '\t' )
+				continue;
+			isInclude = false;
+			break;
+		}
+		n++;
+		if ( !isInclude )
+			continue;
+		while ( n < data.size() && ( data.at( n ) == ' ' || data.at( n ) == '\t' ) )
+			n++;
+		if ( !( ( n + 7 ) <= data.size() && std::string_view( data.constData() + n, 7 ) == "include" ) )
+			continue;
+		n = n + 7;
+
+		QString	includeFileName;
+		int	includeState = 0;
+		for ( ; n < data.size(); n++ ) {
+			char	c = data.at( n );
+			if ( c == '"' ) {
+				if ( includeState > 1 )
+					break;
+				includeState++;
+				continue;
+			} else if ( c == '\n' ) {
+				includeState++;
+				break;
+			} else if ( !( c == ' ' || c == '\t' || c == '\r' ) && includeState != 1 ) {
+				break;
+			}
+			if ( includeState == 1 )
+				includeFileName += QChar( c );
+		}
+		if ( includeState != 3 || includeFileName.isEmpty() )
+			throw QString( "invalid #include syntax in %1" ).arg( filepath );
+		if ( includeDepth >= 16 )
+			throw QString( "%1: #include recursion depth is too high" ).arg( filepath );
+		qsizetype	oldSize = data.size();
+		data.remove( includePos, n - includePos );
+		data.insert( includePos, loadShaderFile( includeFileName, includeDepth + 1 ) );
+		n = n + ( data.size() - oldSize );
+	}
+
+	return data;
 }
 
 bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 {
 	try
 	{
-		QFile file( filepath );
+		QByteArray	data = loadShaderFile( filepath );
 
-		if ( !file.open( QIODevice::ReadOnly ) )
-			throw QString( "couldn't open %1 for read access" ).arg( filepath );
-
-		QByteArray data = file.readAll();
-		int	n = data.indexOf( "SF_NUM_TEXTURE_UNITS" );
+		qsizetype	n = data.indexOf( "SF_NUM_TEXTURE_UNITS" );
 		if ( n >= 0 )
 			data.replace( n, 20, QByteArray::number( TexCache::num_texture_units - 2 ) );
 
@@ -280,8 +364,7 @@ bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 	}
 	catch ( QString & err )
 	{
-		status = false;
-		Message::append( QObject::tr( "There were errors during shader compilation" ), QString( "%1:\r\n\r\n%2" ).arg( name ).arg( err ) );
+		printCompileError( err );
 		return false;
 	}
 	status = true;
@@ -289,21 +372,36 @@ bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 }
 
 
-NifSkopeOpenGLContext::Program::Program( const QString & n, QOpenGLFunctions_4_1_Core * fn )
-	: f( fn ), name( n.toLower() ), id( 0 )
+NifSkopeOpenGLContext::Program::Program( const std::string_view & n, QOpenGLFunctions_4_1_Core * fn )
+	: Shader( n, 0, fn ), nextProgram( nullptr )
 {
-	unsigned int	m = ( name.startsWith( QLatin1StringView("stf_") ) ? 512 : 128 );
-	uniLocationsMap = new UniformLocationMapItem[m];
-	uniLocationsMapMask = m - 1;
+	uniLocationsMap = new UniformLocationMapItem[64];
+	uniLocationsMapMask = 63;
 	uniLocationsMapSize = 0;
 	id = f->glCreateProgram();
 }
 
 NifSkopeOpenGLContext::Program::~Program()
 {
-	if ( id )
-		f->glDeleteShader( id );
+	if ( id ) {
+		f->glDeleteProgram( id );
+		id = 0;
+	}
 	delete[] uniLocationsMap;
+}
+
+void NifSkopeOpenGLContext::Program::clear()
+{
+	if ( id ) {
+		f->glDeleteProgram( id );
+		id = 0;
+	}
+	status = false;
+	isProgram = true;
+	uniLocationsMapSize = 0;
+	nextProgram = nullptr;
+	for ( size_t i = 0; i <= uniLocationsMapMask; i++ )
+		(void) new( &(uniLocationsMap[i]) ) UniformLocationMapItem();
 }
 
 bool NifSkopeOpenGLContext::Program::load( const QString & filepath, NifSkopeOpenGLContext * context )
@@ -326,16 +424,24 @@ bool NifSkopeOpenGLContext::Program::load( const QString & filepath, NifSkopeOpe
 			if ( line.startsWith( "shaders" ) ) {
 				QStringList list = line.simplified().split( " " );
 
-				for ( int i = 1; i < list.count(); i++ ) {
-					Shader * shader = context->shaders.value( list[ i ] );
+				for ( qsizetype i = 1; i < list.size(); i++ ) {
+					const QString &	name = list.at( i );
+					std::string	nameStr( name.toStdString() );
+					std::uint32_t	m = context->shaderHashMask;
+					std::uint32_t	h = hashFunctionUInt32( nameStr.c_str(), nameStr.length() ) & m;
+					Shader * shader;
+					for ( ; ( shader = context->shadersAndPrograms[h] ) != nullptr; h = ( h + 1 ) & m ) {
+						if ( !shader->isProgram && shader->name == nameStr )
+							break;
+					}
 
-					if ( shader ) {
+					if ( shader && shader->id ) {
 						if ( shader->status )
 							f->glAttachShader( id, shader->id );
 						else
-							throw QString( "depends on shader %1 which was not compiled successful" ).arg( list[ i ] );
+							throw QString( "depends on shader %1 which was not compiled successful" ).arg( name );
 					} else {
-						throw QString( "shader %1 not found" ).arg( list[ i ] );
+						throw QString( "shader %1 not found" ).arg( name );
 					}
 				}
 			} else if ( line.startsWith( "checkgroup" ) ) {
@@ -382,6 +488,7 @@ bool NifSkopeOpenGLContext::Program::load( const QString & filepath, NifSkopeOpe
 				f->glGetProgramInfoLog( id, logLen, 0, log );
 				QString errlog( log );
 				delete[] log;
+				f->glDeleteProgram( id );
 				id = 0;
 				throw errlog;
 			}
@@ -389,11 +496,12 @@ bool NifSkopeOpenGLContext::Program::load( const QString & filepath, NifSkopeOpe
 	}
 	catch ( QString & x )
 	{
-		status = false;
-		Message::append( QObject::tr( "There were errors during shader compilation" ), QString( "%1:\r\n\r\n%2" ).arg( name ).arg( x ) );
+		printCompileError( x );
 		return false;
 	}
 	status = true;
+	nextProgram = context->programsLinked;
+	context->programsLinked = this;
 	return true;
 }
 
@@ -454,8 +562,10 @@ int NifSkopeOpenGLContext::Program::storeUniformLocation( const UniformLocationM
 	int	l = f->glGetUniformLocation( id, varNameBuf );
 	uniLocationsMap[i] = o;
 	uniLocationsMap[i].l = l;
+#ifndef QT_NO_DEBUG
 	if ( l < 0 )
 		std::fprintf( stderr, "[Warning] Uniform '%s' not found\n", varNameBuf );
+#endif
 
 	uniLocationsMapSize++;
 	if ( ( uniLocationsMapSize * size_t(3) ) > ( uniLocationsMapMask * size_t(2) ) ) {
@@ -682,12 +792,91 @@ NifSkopeOpenGLContext::NifSkopeOpenGLContext( QOpenGLContext * context )
 		reinterpret_cast< void (*)( unsigned int, const float * ) >( cx->getProcAddress( "glVertexAttrib4fv" ) );
 	if ( !( fn && vertexAttrib1f && vertexAttrib2fv && vertexAttrib3fv && vertexAttrib4fv ) )
 		throw NifSkopeError( "failed to initialize OpenGL functions" );
+	rehashShaders();
 }
 
 NifSkopeOpenGLContext::~NifSkopeOpenGLContext()
 {
 	flushCache();
-	releaseShaders();
+	stopProgram();
+	for ( size_t i = 0; i <= shaderHashMask; i++ ) {
+		Shader *	s = shadersAndPrograms[i];
+		if ( !s )
+			continue;
+		if ( s->isProgram )
+			delete static_cast< Program * >( s );
+		else
+			delete s;
+	}
+}
+
+NifSkopeOpenGLContext::Shader * NifSkopeOpenGLContext::createShader( const QString & name )
+{
+	std::string	nameStr( name.toLower().toStdString() );
+
+	unsigned int	t = 0;
+	if ( nameStr.ends_with( ".frag" ) )
+		t = GL_FRAGMENT_SHADER;
+	else if ( nameStr.ends_with( ".vert" ) )
+		t = GL_VERTEX_SHADER;
+	else if ( !nameStr.ends_with( ".prog" ) )
+		return nullptr;
+
+	std::uint32_t	m = shaderHashMask;
+	std::uint32_t	h = hashFunctionUInt32( nameStr.c_str(), nameStr.length() ) & m;
+	Shader *	p;
+	for ( ; ( p = shadersAndPrograms[h] ) != nullptr; h = ( h + 1 ) & m ) {
+		if ( p->name == nameStr )
+			break;
+	}
+
+	if ( p ) {
+		if ( !p->id ) {
+			if ( t )
+				p->id = fn->glCreateShader( t );
+			else
+				p->id = fn->glCreateProgram();
+		}
+		return p;
+	}
+
+	std::string_view *	storedName = shaderDataBuf.constructObject< std::string_view >();
+	char *	s = shaderDataBuf.allocateObjects< char >( nameStr.length() + 1 );
+	std::memcpy( s, nameStr.c_str(), nameStr.length() );
+	*storedName = std::string_view( s, nameStr.length() );
+	if ( t )
+		p = new Shader( *storedName, t, fn );
+	else
+		p = new Program( *storedName, fn );
+	shadersAndPrograms[h] = p;
+
+	shaderCnt++;
+	if ( ( shaderCnt * 2U ) > shaderHashMask )
+		rehashShaders();
+
+	return p;
+}
+
+void NifSkopeOpenGLContext::rehashShaders()
+{
+	size_t	n = size_t( 128 ) << std::bit_width( std::uint64_t( shaderCnt >> 6 ) );
+	std::uint32_t	m = std::uint32_t( n - 1 );
+	Shader **	tmp = shaderDataBuf.allocateObjects< Shader * >( n );
+	for ( size_t i = 0; i < n; i++ )
+		tmp[i] = nullptr;
+	if ( shadersAndPrograms ) {
+		for ( size_t i = 0; i <= shaderHashMask; i++ ) {
+			Shader *	p = shadersAndPrograms[i];
+			if ( !p )
+				continue;
+			std::uint32_t	h = hashFunctionUInt32( p->name.data(), p->name.length() ) & m;
+			while ( tmp[h] )
+				h = ( h + 1 ) & m;
+			tmp[h] = p;
+		}
+	}
+	shadersAndPrograms = tmp;
+	shaderHashMask = m;
 }
 
 void NifSkopeOpenGLContext::updateShaders()
@@ -704,57 +893,67 @@ void NifSkopeOpenGLContext::updateShaders()
 		dir.cd( "/usr/share/nifskope/shaders" );
 #endif
 
-	dir.setNameFilters( { "*.vert" } );
-	for ( const QString& name : dir.entryList() ) {
-		Shader * shader = new Shader( name, GL_VERTEX_SHADER, fn );
-		shader->load( dir.filePath( name ) );
-		shaders.insert( name, shader );
+	for ( const QString & name : dir.entryList() ) {
+		Shader *	shader = createShader( name );
+		if ( shader && !shader->isProgram )
+			shader->load( dir.filePath( name ) );
 	}
 
-	dir.setNameFilters( { "*.frag" } );
-	for ( const QString& name : dir.entryList() ) {
-		Shader * shader = new Shader( name, GL_FRAGMENT_SHADER, fn );
-		shader->load( dir.filePath( name ) );
-		shaders.insert( name, shader );
-	}
-
-	dir.setNameFilters( { "*.prog" } );
-	for ( const QString& name : dir.entryList() ) {
-		Program * program = new Program( name, fn );
-		program->load( dir.filePath( name ), this );
-		programs.insert( program->name, program );
+	for ( size_t i = 0; i <= shaderHashMask; i++ ) {
+		Shader *	s = shadersAndPrograms[i];
+		if ( s && s->id && s->isProgram ) {
+			QString	name;
+			name.append( QUtf8StringView( s->name.data(), qsizetype( s->name.length() ) ) );
+			static_cast< Program * >( s )->load( dir.filePath( name ), this );
+		}
 	}
 }
 
 void NifSkopeOpenGLContext::releaseShaders()
 {
-	qDeleteAll( programs );
-	programs.clear();
-	qDeleteAll( shaders );
-	shaders.clear();
+	stopProgram();
+	programsLinked = nullptr;
+	for ( size_t i = 0; i <= shaderHashMask; i++ ) {
+		Shader *	s = shadersAndPrograms[i];
+		if ( !s )
+			continue;
+		if ( s->isProgram )
+			static_cast< Program * >( s )->clear();
+		else
+			s->clear();
+	}
 }
 
-NifSkopeOpenGLContext::Program * NifSkopeOpenGLContext::useProgram( const QString & name )
+NifSkopeOpenGLContext::Program * NifSkopeOpenGLContext::useProgram( const std::string_view & name )
 {
-	Program *	prog = programs.value( name );
-	unsigned int	id = 0;
-	if ( prog && prog->status )
-		id = prog->id;
-	fn->glUseProgram( id );
-	return prog;
+	std::uint32_t	m = shaderHashMask;
+	std::uint32_t	h = hashFunctionUInt32( name.data(), name.length() ) & m;
+	Shader *	s;
+	for ( ; ( s = shadersAndPrograms[h] ) != nullptr; h = ( h + 1 ) & m ) {
+		if ( s->isProgram && s->name == name )
+			break;
+	}
+	if ( s && s->status ) [[likely]] {
+		Program *	prog = static_cast< Program * >( s );
+		fn->glUseProgram( prog->id );
+		currentProgram = prog;
+		return prog;
+	}
+	stopProgram();
+	return nullptr;
 }
 
 void NifSkopeOpenGLContext::stopProgram()
 {
+	currentProgram = nullptr;
 	fn->glUseProgram( 0 );
 }
 
 void NifSkopeOpenGLContext::setGlobalUniforms()
 {
-	for ( Program * p : programs ) {
-		if ( !p->status )
-			continue;
+	for ( Program * p = programsLinked; p; p = p->nextProgram ) {
 		fn->glUseProgram( p->id );
+		currentProgram = p;
 		p->uni3m( "viewMatrix", viewMatrix );
 		p->uni4m( "projectionMatrix", projectionMatrix );
 		p->uni4f( "lightSourcePosition0", lightSourcePosition0 );
@@ -765,6 +964,7 @@ void NifSkopeOpenGLContext::setGlobalUniforms()
 		p->uni4f( "lightSourcePosition2", lightSourcePosition2 );
 		p->uni4f( "lightSourceDiffuse2", lightSourceDiffuse2 );
 	}
+	currentProgram = nullptr;
 	fn->glUseProgram( 0 );
 }
 
@@ -900,11 +1100,12 @@ void NifSkopeOpenGLContext::rehashCache()
 
 inline std::uint32_t NifSkopeOpenGLContext::ShapeDataHash::hashFunction() const
 {
-	std::uint32_t	tmp = 0xFFFFFFFFU;
-	hashFunctionCRC32C< std::uint64_t >( tmp, attrMask );
-	hashFunctionCRC32C< std::uint64_t >( tmp, h[0] );
-	hashFunctionCRC32C< std::uint64_t >( tmp, h[1] );
-	return tmp;
+	std::uint64_t	tmp1 = attrMask;
+	std::uint64_t	tmp2 = ( std::uint64_t( elementBytes ) << 32 ) | numVerts;
+	std::uint64_t	r = h[0];
+	hashFunctionUInt64( r, tmp1 );
+	hashFunctionUInt64( r, tmp2 );
+	return std::uint32_t( r );
 }
 
 std::pair< std::uint32_t, std::uint32_t > NifSkopeOpenGLContext::ShapeDataHash::getBufferCountAndSize() const
@@ -983,13 +1184,47 @@ NifSkopeOpenGLContext::ShapeData::~ShapeData()
 #define XXH_INLINE_ALL 1
 #include "xxhash.h"
 
+struct alignas( 64 ) ShapeDataHashSecret {
+	unsigned char	buf[XXH3_SECRET_DEFAULT_SIZE];
+	ShapeDataHashSecret();
+};
+
+ShapeDataHashSecret::ShapeDataHashSecret()
+{
+	unsigned long long	s[2];
+#if ENABLE_X86_64_SIMD >= 4
+	__builtin_ia32_rdrand64_step( &(s[0]) );
+	__builtin_ia32_rdrand64_step( &(s[1]) );
+#else
+	auto	t = std::chrono::steady_clock::now().time_since_epoch();
+	s[0] = (unsigned long long) std::chrono::duration_cast< std::chrono::microseconds >( t ).count();
+	s[1] = timerFunctionRDTSC();
+#endif
+	XXH3_generateSecret( buf, sizeof( buf ), s, sizeof( s ) );
+}
+
+static ShapeDataHashSecret	shapeDataHashSecret;
+
+
 NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
 	std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
 	const float * const * attrData, const void * elementData )
 	: attrMask( attrModeMask ), numVerts( vertCnt ), elementBytes( std::uint32_t(elementDataSize) )
 {
-	XXH3_state_t	xxhState;
-	XXH3_128bits_reset( &xxhState );
+	XXH3_state_t *	xxhState;
+#if defined(_WIN32) || defined(_WIN64)
+	// work around stack alignment issues on Windows
+	unsigned char	xxhStateBuf[sizeof( XXH3_state_t ) + 64];
+	{
+		std::uintptr_t	p = reinterpret_cast< std::uintptr_t >( &(xxhStateBuf[0]) );
+		p = ( p + 63U ) & std::uintptr_t( -64 );
+		xxhState = reinterpret_cast< XXH3_state_t * >( reinterpret_cast< unsigned char * >( p ) );
+	}
+#else
+	XXH3_state_t	xxhStateBuf;
+	xxhState = &xxhStateBuf;
+#endif
+	XXH3_128bits_reset_withSecret( xxhState, shapeDataHashSecret.buf, sizeof( shapeDataHashSecret.buf ) );
 	for ( std::uint32_t i = 0; true; i++, attrModeMask = attrModeMask >> 4 ) {
 		const void *	p;
 		size_t	nBytes;
@@ -1003,11 +1238,11 @@ NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
 			p = attrData[i];
 		}
 		if ( nBytes > 0 )
-			XXH3_128bits_update( &xxhState, p, nBytes );
+			XXH3_128bits_update( xxhState, p, nBytes );
 		if ( !attrModeMask )
 			break;
 	}
-	XXH128_hash_t	xxhResult = XXH3_128bits_digest( &xxhState );
+	XXH128_hash_t	xxhResult = XXH3_128bits_digest( xxhState );
 	h[0] = xxhResult.low64;
 	h[1] = xxhResult.high64;
 }

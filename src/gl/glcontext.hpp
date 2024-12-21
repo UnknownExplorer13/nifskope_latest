@@ -35,7 +35,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include <QString>
 #include <QVector>
-#include <QMap>
 #include <QModelIndex>
 #include <QOpenGLFunctions_4_1_Core>
 
@@ -93,6 +92,8 @@ public:
 
 		bool isOrGroup() const { return _or; }
 
+		inline bool isEmpty() const { return conditions.isEmpty(); }
+
 protected:
 		QVector<Condition *> conditions;
 		bool _or;
@@ -102,34 +103,31 @@ protected:
 	class Shader
 	{
 public:
-		Shader( const QString & name, unsigned int type, QOpenGLFunctions_4_1_Core * fn );
+		// type = GL_FRAGMENT_SHADER or GL_VERTEX_SHADER, or 0 for programs
+		Shader( const std::string_view & name, unsigned int type, QOpenGLFunctions_4_1_Core * fn );
 		~Shader();
 
 		bool load( const QString & filepath );
+		void clear();
+		void printCompileError( const QString & err );
 
 		QOpenGLFunctions_4_1_Core * f;
-		QString name;
+		const std::string_view & name;
 		unsigned int id;
 		bool status;
-
-protected:
-		unsigned int type;
+		bool isProgram;
 	};
 
 public:
 	//! Parsing and loading of .prog files
-	class Program
+	class Program : public Shader
 	{
 public:
-		Program( const QString & name, QOpenGLFunctions_4_1_Core * fn );
+		Program( const std::string_view & name, QOpenGLFunctions_4_1_Core * fn );
 		~Program();
 
 		bool load( const QString & filepath, NifSkopeOpenGLContext * context );
-
-		QOpenGLFunctions_4_1_Core * f;
-		QString name;
-		unsigned int id;
-		bool status = false;
+		void clear();
 
 		ConditionGroup conditions;
 
@@ -151,6 +149,8 @@ private:
 		unsigned int	uniLocationsMapSize;
 		int storeUniformLocation( const UniformLocationMapItem & o, size_t i );
 public:
+		Program *	nextProgram;
+
 		// fmt must be a string literal, with at most two %d format integer arguments in the range 0 to 99
 		int uniLocation( const char * fmt );
 		int uniLocation( const char * fmt, int argsX16Y16 );
@@ -254,9 +254,14 @@ public:
 	//! Releases shaders
 	void releaseShaders();
 	//! Select shader program to use
-	Program * useProgram( const QString & name );
+	Program * useProgram( const std::string_view & name );
 	//! Stop shader program
 	void stopProgram();
+	//! Get the currently used shader program (nullptr if none)
+	inline Program * getCurrentProgram()
+	{
+		return currentProgram;
+	}
 
 	void setGlobalUniforms();
 
@@ -302,8 +307,12 @@ public:
 	FloatVector4	lightSourceDiffuse2;
 
 protected:
-	QMap<QString, Shader *> shaders;
-	QMap<QString, Program *> programs;
+	Shader **	shadersAndPrograms = nullptr;
+	std::uint32_t	shaderHashMask = 0;
+	std::uint32_t	shaderCnt = 0;
+
+	Shader * createShader( const QString & name );
+	void rehashShaders();
 
 	void rehashCache();
 
@@ -328,6 +337,10 @@ protected:
 	std::uint32_t	cacheMaxShapes = 1024;
 	std::uint32_t	cacheMaxBuffers = 8192;
 	size_t	cacheMaxBytes = 0x08000000;
+
+	Program *	currentProgram = nullptr;
+	Program *	programsLinked = nullptr;
+	AllocBuffers	shaderDataBuf;
 };
 
 inline bool NifSkopeOpenGLContext::ShapeDataHash::operator==( const ShapeDataHash & r ) const
