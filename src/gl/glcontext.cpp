@@ -265,8 +265,7 @@ void NifSkopeOpenGLContext::Shader::clear()
 void NifSkopeOpenGLContext::Shader::printCompileError( const QString & err )
 {
 	status = false;
-	QString	tmp;
-	tmp.append( QUtf8StringView( name.data(), qsizetype( name.length() ) ) );
+	QString	tmp( QString::fromUtf8( name.data(), qsizetype( name.length() ) ) );
 	tmp.append( QLatin1StringView( ":\r\n\r\n" ) );
 	tmp.append( err );
 	Message::append( QObject::tr( "There were errors during shader compilation" ), tmp );
@@ -902,8 +901,7 @@ void NifSkopeOpenGLContext::updateShaders()
 	for ( size_t i = 0; i <= shaderHashMask; i++ ) {
 		Shader *	s = shadersAndPrograms[i];
 		if ( s && s->id && s->isProgram ) {
-			QString	name;
-			name.append( QUtf8StringView( s->name.data(), qsizetype( s->name.length() ) ) );
+			QString	name( QString::fromUtf8( s->name.data(), qsizetype( s->name.length() ) ) );
 			static_cast< Program * >( s )->load( dir.filePath( name ), this );
 		}
 	}
