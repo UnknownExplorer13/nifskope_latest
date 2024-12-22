@@ -882,7 +882,7 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 		}
 	}
 
-	if ( nifVersion < 130 && prog->name == QLatin1StringView( "sk_msn.prog" ) )
+	if ( nifVersion < 130 && prog->name == "sk_msn.prog" )
 		prog->uni3m( "viewMatrix", mesh->viewTrans().rotation );
 	else
 		prog->uni3m( "viewMatrix", scene->view.rotation );
