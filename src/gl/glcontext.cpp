@@ -1131,10 +1131,15 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 	std::uint64_t	attrMask = dataHash.attrMask;
 	std::uint32_t	vertCnt = dataHash.numVerts;
 	std::uint32_t	elementDataSize = dataHash.elementBytes;
+	std::uint32_t	attrDataSize = dataHash.getBufferCountAndSize().second - elementDataSize;
+	std::uintptr_t	attrOffset = 0;
 
 	QOpenGLFunctions_4_1_Core &	f = *( context.fn );
 	f.glGenVertexArrays( 1, &vao );
 	f.glBindVertexArray( vao );
+	f.glGenBuffers( 1, &vbo );
+	f.glBindBuffer( GL_ARRAY_BUFFER, vbo );
+	f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( attrDataSize ), (void *) 0, GL_STATIC_DRAW );
 	for ( size_t i = 0; attrMask; i++, attrMask = attrMask >> 4 ) {
 		size_t	nBytes = attrMask & 7;
 		if ( !nBytes )
@@ -1152,11 +1157,10 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 				context.vertexAttrib1f( GLuint( i ), attrData[i][0] );
 		} else {
 			nBytes = nBytes * vertCnt;
-			f.glGenBuffers( 1, &( vbo[i] ) );
-			f.glBindBuffer( GL_ARRAY_BUFFER, vbo[i] );
-			f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( nBytes ), attrData[i], GL_STATIC_DRAW );
-			f.glVertexAttribPointer( GLuint( i ), GLint( attrMask & 7 ), GL_FLOAT, GL_FALSE, 0, (void *) 0 );
+			f.glBufferSubData( GL_ARRAY_BUFFER, GLintptr( attrOffset ), GLsizeiptr( nBytes ), attrData[i] );
+			f.glVertexAttribPointer( GLuint( i ), GLint( attrMask & 7 ), GL_FLOAT, GL_FALSE, 0, (void *) attrOffset );
 			f.glEnableVertexAttribArray( GLuint( i ) );
+			attrOffset = attrOffset + nBytes;
 		}
 	}
 
@@ -1171,11 +1175,7 @@ NifSkopeOpenGLContext::ShapeData::~ShapeData()
 	f.glBindVertexArray( 0 );
 	f.glDeleteVertexArrays( 1, &vao );
 	f.glDeleteBuffers( 1, &ebo );
-	std::uint64_t	m = h.attrMask;
-	for ( size_t i = 0; m; i++, m = m >> 4 ) {
-		if ( ( m & 7 ) && !( m & 8 ) )
-			f.glDeleteBuffers( 1, &( vbo[i] ) );
-	}
+	f.glDeleteBuffers( 1, &vbo );
 }
 
 

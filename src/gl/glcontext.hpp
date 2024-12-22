@@ -323,7 +323,7 @@ protected:
 		QOpenGLFunctions_4_1_Core *	fn;
 		unsigned int	vao;					// vertex array object
 		unsigned int	ebo;					// element buffer object
-		unsigned int	vbo[16];				// vertex buffer objects
+		unsigned int	vbo;					// vertex buffer object
 		ShapeData( NifSkopeOpenGLContext & context, const ShapeDataHash & dataHash,
 					const float * const * attrData, const void * elementData );
 		~ShapeData();
