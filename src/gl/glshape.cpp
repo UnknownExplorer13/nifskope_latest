@@ -40,7 +40,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QDebug>
 #include <QElapsedTimer>
 
-Shape::Shape( Scene * s, const QModelIndex & b ) : Node( s, b ), dataHash( 0, 0, 0, nullptr, nullptr )
+Shape::Shape( Scene * s, const QModelIndex & b ) : Node( s, b )
 {
 	shapeNumber = s->shapes.count();
 }

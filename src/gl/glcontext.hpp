@@ -239,6 +239,15 @@ public:
 		std::uint32_t	numVerts;
 		std::uint32_t	elementBytes;
 		std::uint64_t	h[2];
+		inline ShapeDataHash()
+		{
+			std::memset( this, 0, sizeof( ShapeDataHash ) );
+		}
+		inline ShapeDataHash( std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
+								std::uint64_t id = 0 )
+			: attrMask( attrModeMask ), numVerts( vertCnt ), elementBytes( elementDataSize ), h{ id, 0U }
+		{
+		}
 		ShapeDataHash( std::uint32_t vertCnt, std::uint64_t attrModeMask, size_t elementDataSize,
 						const float * const * attrData, const void * elementData );
 		inline bool operator==( const ShapeDataHash & r ) const;
