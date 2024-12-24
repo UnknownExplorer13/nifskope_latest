@@ -58,7 +58,6 @@ public:
 	QVector<BoneWeightsUNorm> weightsUNORM;
 	QVector<QVector<Triangle>> gpuLODs;
 	QVector<QString> boneNames;
-	QVector<Transform> boneTransforms;
 
 protected:
 	void updateImpl(const NifModel* nif, const QModelIndex& index) override;

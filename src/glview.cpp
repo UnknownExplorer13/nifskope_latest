@@ -845,7 +845,9 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	glDisable( GL_BLEND );
 	glDisable( GL_DITHER );
 	glEnable( GL_DEPTH_TEST );
+	glDepthMask( GL_TRUE );
 	glDepthFunc( GL_LEQUAL );
+	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 	glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 

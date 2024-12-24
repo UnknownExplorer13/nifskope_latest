@@ -47,92 +47,28 @@ void BSMesh::drawShapes( NodeList * secondPass )
 	else
 		glPolygonOffset( 1.0f, 2.0f );
 
-	// location 0: position (vec3)
-	// location 1: texcoords (vec4, UV1 in st, UV2 in pq)
-	// location 2: texcoord0 (vec2)
-	// location 3: texcoord1 (vec2)
-	// location 4: color (vec4)
-	// location 5: normal (vec3)
-	// location 6: tangent (vec3)
-	// location 7: bitangent (vec3)
-	const float *	vertexAttrs[8];
-	FloatVector4	defaultPos( 0.0f );
-	FloatVector4	defaultColor( 1.0f );
-	FloatVector4	defaultNormal( 0.0f, 0.0f, 1.0f, 0.0f );
-	FloatVector4	defaultTangent( 0.0f, -1.0f, 0.0f, 0.0f );
-	FloatVector4	defaultBitangent( 1.0f, 0.0f, 0.0f, 0.0f );
-	vertexAttrs[0] = &( defaultPos[0] );
-	vertexAttrs[1] = &( defaultPos[0] );
-	vertexAttrs[4] = &( defaultColor[0] );
-	vertexAttrs[5] = &( defaultNormal[0] );
-	vertexAttrs[6] = &( defaultTangent[0] );
-	vertexAttrs[7] = &( defaultBitangent[0] );
-	qsizetype	numVerts = transVerts.count();
-	qsizetype	numTriangles = sortedTriangles.count();
-	std::uint32_t	attrMask = 0xBBBC00CBU;
-	if ( numVerts > 0 && numTriangles > 0 ) {
-		vertexAttrs[0] = &( transVerts.constFirst()[0] );
-		attrMask = attrMask & ~0x00000008U;
+	if ( !Node::SELECTING ) [[likely]] {
+		glEnable( GL_FRAMEBUFFER_SRGB );
+		shader = scene->renderer->setupProgram( this, shader );
 
-		if ( !Node::SELECTING ) [[likely]] {
-			glEnable( GL_FRAMEBUFFER_SRGB );
-			shader = scene->renderer->setupProgram(this, shader);
+		drawShape( 0x003F );
 
-			const MeshFile *	sfMesh = getMeshFile();
-			if ( sfMesh && sfMesh->coords.count() >= numVerts ) {
-				vertexAttrs[1] = &( sfMesh->coords.constFirst()[0] );
-				attrMask = attrMask & ~0x00000080U;
-			}
-			if ( transColors.count() >= numVerts && scene->hasOption(Scene::DoVertexColors) ) {
-				vertexAttrs[4] = &( transColors.constFirst()[0] );
-				attrMask = attrMask & ~0x00080000U;
-			}
-			if ( transNorms.count() >= numVerts ) {
-				vertexAttrs[5] = &( transNorms.constFirst()[0] );
-				attrMask = attrMask & ~0x00800000U;
-			}
-			if ( transTangents.count() >= numVerts || tangents.count() >= numVerts ) {
-				if ( transTangents.count() >= numVerts )
-					vertexAttrs[6] = &( transTangents.constFirst()[0] );
-				else
-					vertexAttrs[6] = &( tangents.constFirst()[0] );
-				attrMask = attrMask & ~0x08000000U;
-			}
-			if ( transBitangents.count() >= numVerts || bitangents.count() >= numVerts ) {
-				if ( transBitangents.count() >= numVerts )
-					vertexAttrs[7] = &( transBitangents.constFirst()[0] );
-				else
-					vertexAttrs[7] = &( bitangents.constFirst()[0] );
-				attrMask = attrMask & ~0x80000000U;
-			}
+	} else {
+		glDisable( GL_FRAMEBUFFER_SRGB );
 
-			if ( !dataHash.attrMask ) {
-				dataHash = NifSkopeOpenGLContext::ShapeDataHash(
-								std::uint32_t( numVerts ), attrMask, size_t( numTriangles ) * sizeof( Triangle ),
-								vertexAttrs, sortedTriangles.constData() );
-			}
+		FloatVector4	c( 0.0f, 0.0f, 0.0f, 1.0f );
+		if ( scene->isSelModeObject() )
+			c = getColorKeyFromID( nodeId );
 
-			scene->renderer->drawShape( dataHash, (unsigned int) ( numTriangles * 3 ),
-										GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, sortedTriangles.constData() );
-
-		} else {
-			glDisable( GL_FRAMEBUFFER_SRGB );
-
-			if ( scene->isSelModeObject() ) {
-				setColorKeyFromID( nodeId );
-			} else {
-				glColor4f( 0, 0, 0, 1 );
-			}
-
-			if ( !( drawInSecondPass && scene->isSelModeVertex() ) ) {
-				scene->renderer->drawShape( (unsigned int) numVerts, attrMask, (unsigned int) ( numTriangles * 3 ),
-											GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, sortedTriangles.constData() );
-			}
+		if ( !( drawInSecondPass && scene->isSelModeVertex() ) ) {
+			NifSkopeOpenGLContext::Program *	prog = scene->renderer->useProgram( "selection.prog" );
+			setUniforms( prog );
+			if ( prog )
+				prog->uni4f( "C", c );
+			drawShape( 0x0001 );
 		}
-
-		scene->renderer->stopProgram();
 	}
-
+	scene->renderer->stopProgram();
 	glDisable( GL_POLYGON_OFFSET_FILL );
 
 	if ( scene->isSelModeVertex() )
@@ -165,6 +101,11 @@ void BSMesh::drawSelection() const
 	glEnable(GL_POLYGON_OFFSET_FILL);
 	glPolygonOffset(-1.0f, -2.0f);
 
+	NifSkopeOpenGLContext::Program *	prog;
+	if ( !( scene->renderer && ( prog = scene->renderer->useProgram( "selection.prog" ) ) != nullptr ) )
+		return;
+	setUniforms( prog );
+
 	glPointSize( GLView::Settings::vertexPointSize );
 	glLineWidth( GLView::Settings::lineWidthWireframe );
 	glNormalColor();
@@ -181,8 +122,8 @@ void BSMesh::drawSelection() const
 		glPointSize( size );
 		glBegin( GL_POINTS );
 
-		for ( int j = 0; j < transVerts.count(); j++ )
-			glVertex( transVerts.value( j ) );
+		for ( int j = 0; j < verts.size(); j++ )
+			glVertex( verts.value( j ) );
 
 		glEnd();
 	};
@@ -195,11 +136,11 @@ void BSMesh::drawSelection() const
 
 			glLineWidth( GLView::Settings::lineWidthWireframe * 0.78125f );
 			glBegin( GL_LINES );
-			for ( int j = 0; j < transVerts.count() && j < v.count(); j++ ) {
-				glVertex( transVerts.value( j ) );
-				glVertex( transVerts.value( j ) + v.value( j ) * normalScale );
-				glVertex( transVerts.value( j ) );
-				glVertex( transVerts.value( j ) - v.value( j ) * normalScale * 0.25f );
+			for ( int j = 0; j < verts.size() && j < v.size(); j++ ) {
+				glVertex( verts.value( j ) );
+				glVertex( verts.value( j ) + v.value( j ) * normalScale );
+				glVertex( verts.value( j ) );
+				glVertex( verts.value( j ) - v.value( j ) * normalScale * 0.25f );
 			}
 			glEnd();
 		}
@@ -214,10 +155,10 @@ void BSMesh::drawSelection() const
 			}
 			glLineWidth( GLView::Settings::lineWidthHighlight * 1.2f );
 			glBegin( GL_LINES );
-			glVertex( transVerts.value( s ) );
-			glVertex( transVerts.value( s ) + v.value( s ) * normalScale * 2.0f );
-			glVertex( transVerts.value( s ) );
-			glVertex( transVerts.value( s ) - v.value( s ) * normalScale * 0.5f );
+			glVertex( verts.value( s ) );
+			glVertex( verts.value( s ) + v.value( s ) * normalScale * 2.0f );
+			glVertex( verts.value( s ) );
+			glVertex( verts.value( s ) - v.value( s ) * normalScale * 0.5f );
 			glEnd();
 		}
 		glLineWidth( GLView::Settings::lineWidthWireframe );
@@ -256,20 +197,20 @@ void BSMesh::drawSelection() const
 			glDepthFunc( GL_ALWAYS );
 			glHighlightColor();
 			glBegin( GL_POINTS );
-			glVertex( transVerts.value( s ) );
+			glVertex( verts.value( s ) );
 			glEnd();
 		}
 	} else if ( n == "Normals" ) {
 		int	s = -1;
 		if ( n == p )
 			s = idx.row();
-		lines( transNorms, s );
+		lines( norms, s );
 	} else if ( n == "Tangents" ) {
 		int	s = -1;
 		if ( n == p )
 			s = idx.row();
-		lines( transBitangents, s );
-		lines( transTangents, s, true );
+		lines( bitangents, s );
+		lines( tangents, s, true );
 	} else if ( n == "Skin" ) {
 		auto	iSkin = nif->getBlockIndex( nif->getLink( idx.parent(), "Skin" ) );
 		if ( iSkin.isValid() && nif->isNiBlock( iSkin, "BSSkin::Instance" ) ) {
@@ -326,9 +267,9 @@ void BSMesh::drawSelection() const
 				glBegin( GL_TRIANGLES );
 				for ( ; triangleCount && triangleOffset < quint32(sortedTriangles.size()); triangleCount-- ) {
 					Triangle tri = sortedTriangles.value( qsizetype(triangleOffset) );
-					glVertex( transVerts.value(tri.v1()) );
-					glVertex( transVerts.value(tri.v2()) );
-					glVertex( transVerts.value(tri.v3()) );
+					glVertex( verts.value(tri.v1()) );
+					glVertex( verts.value(tri.v2()) );
+					glVertex( verts.value(tri.v3()) );
 					triangleOffset++;
 				}
 				glEnd();
@@ -340,13 +281,7 @@ void BSMesh::drawSelection() const
 		}
 
 		// General wireframe
-		for ( const Triangle& tri : sortedTriangles ) {
-			glBegin( GL_TRIANGLES );
-			glVertex( transVerts.value(tri.v1()) );
-			glVertex( transVerts.value(tri.v2()) );
-			glVertex( transVerts.value(tri.v3()) );
-			glEnd();
-		}
+		drawShape( 0x0001 );
 
 		if ( s >= 0 && ( n == "Triangles" || n == "Meshlets" ) ) {
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
@@ -357,9 +292,9 @@ void BSMesh::drawSelection() const
 			if ( n == "Triangles" ) {
 				// draw selected triangle
 				Triangle tri = sortedTriangles.value( s );
-				glVertex( transVerts.value(tri.v1()) );
-				glVertex( transVerts.value(tri.v2()) );
-				glVertex( transVerts.value(tri.v3()) );
+				glVertex( verts.value(tri.v1()) );
+				glVertex( verts.value(tri.v2()) );
+				glVertex( verts.value(tri.v3()) );
 			} else if ( ( iMeshlets = nif->getIndex( idx.parent().parent(), "Meshlets" ) ).isValid() ) {
 				// draw selected meshlet
 				quint32	triangleOffset = 0;
@@ -370,9 +305,9 @@ void BSMesh::drawSelection() const
 				}
 				for ( ; triangleCount && triangleOffset < quint32(sortedTriangles.size()); triangleCount-- ) {
 					Triangle tri = sortedTriangles.value( qsizetype(triangleOffset) );
-					glVertex( transVerts.value(tri.v1()) );
-					glVertex( transVerts.value(tri.v2()) );
-					glVertex( transVerts.value(tri.v3()) );
+					glVertex( verts.value(tri.v1()) );
+					glVertex( verts.value(tri.v2()) );
+					glVertex( verts.value(tri.v3()) );
 					triangleOffset++;
 				}
 			}
@@ -392,8 +327,8 @@ BoundSphere BSMesh::bounds() const
 {
 	if ( needUpdateBounds ) {
 		needUpdateBounds = false;
-		if ( transVerts.count() ) {
-			boundSphere = BoundSphere(transVerts);
+		if ( verts.size() ) {
+			boundSphere = BoundSphere( verts );
 		} else {
 			boundSphere = dataBound;
 		}
@@ -418,11 +353,11 @@ void BSMesh::drawVerts() const
 
 	glPointSize( GLView::Settings::vertexSelectPointSize );
 	glBegin( GL_POINTS );
-	for ( int i = 0; i < transVerts.count(); i++ ) {
+	for ( int i = 0; i < verts.size(); i++ ) {
 		if ( Node::SELECTING ) {
-			setColorKeyFromID( ( shapeNumber << 16 ) + i );
+			getColorKeyFromID( ( shapeNumber << 16 ) + i );
 		}
-		glVertex( transVerts.value(i) );
+		glVertex( verts.value(i) );
 	}
 	glEnd();
 
@@ -454,18 +389,18 @@ void BSMesh::drawVerts() const
 		break;
 	}
 
-	if ( vertexSelected >= 0 && vertexSelected < transVerts.count() ) {
+	if ( vertexSelected >= 0 && vertexSelected < verts.size() ) {
 		glHighlightColor();
 		glPointSize( GLView::Settings::vertexPointSizeSelected );
 		glBegin( GL_POINTS );
-		glVertex( transVerts.value(vertexSelected) );
+		glVertex( verts.value(vertexSelected) );
 		glEnd();
 	}
 }
 
 QModelIndex BSMesh::vertexAt( int c ) const
 {
-	if ( !( c >= 0 && c < transVerts.count() ) )
+	if ( !( c >= 0 && c < verts.size() ) )
 		return QModelIndex();
 
 	QModelIndex	iMeshData = iBlock;
@@ -511,7 +446,7 @@ QModelIndex BSMesh::vertexAt( int c ) const
 		int	n = nif->rowCount( iVerts );
 		if ( n <= 0 )
 			break;
-		return nif->getIndex( iVerts, int( std::int64_t( c ) * n / transVerts.count() ) );
+		return nif->getIndex( iVerts, int( std::int64_t( c ) * n / verts.size() ) );
 	}
 	return QModelIndex();
 }
@@ -543,13 +478,12 @@ void BSMesh::updateImpl(const NifModel* nif, const QModelIndex& index)
 void BSMesh::updateData(const NifModel* nif)
 {
 	qDebug() << "updateData";
-	dataHash.attrMask = 0;
+	clearHash();
 	resetSkinning();
 	resetVertexData();
 	resetSkeletonData();
 	gpuLODs.clear();
 	boneNames.clear();
-	boneTransforms.clear();
 
 	if ( meshes.size() == 0 )
 		return;
@@ -572,30 +506,19 @@ void BSMesh::updateData(const NifModel* nif)
 		else {
 			sortedTriangles = mesh->triangles;
 		}
-		transVerts = mesh->positions;
+		verts = mesh->positions;
+		coords2 = mesh->coords;
 		coords.resize( mesh->haveTexCoord2 ? 2 : 1 );
-		coords[0].resize( mesh->coords.size() );
-		for ( int i = 0; i < mesh->coords.size(); i++ ) {
-			coords[0][i][0] = mesh->coords[i][0];
-			coords[0][i][1] = mesh->coords[i][1];
-		}
-		if ( mesh->haveTexCoord2 ) {
-			coords[1].resize( mesh->coords.size() );
-			for ( int i = 0; i < mesh->coords.size(); i++ ) {
-				coords[1][i][0] = mesh->coords[i][2];
-				coords[1][i][1] = mesh->coords[i][3];
-			}
-		}
-		transColors = mesh->colors;
-		hasVertexColors = !transColors.empty();
-		transNorms = mesh->normals;
-		transBitangents = mesh->tangents;
-		mesh->calculateBitangents( transTangents );
+		colors = mesh->colors;
+		hasVertexColors = !colors.empty();
+		norms = mesh->normals;
+		bitangents = mesh->tangents;
+		mesh->calculateBitangents( tangents );
 		weightsUNORM = mesh->weights;
 		gpuLODs = mesh->lods;
 
-		boundSphere = BoundSphere(transVerts);
-		boundSphere.applyInv(viewTrans());
+		boundSphere = BoundSphere( verts );
+		boundSphere.applyInv( viewTrans() );
 	}
 
 	auto links = nif->getChildLinks(nif->getBlockNumber(iBlock));
@@ -606,25 +529,23 @@ void BSMesh::updateData(const NifModel* nif)
 			iSkinData = nif->getBlockIndex(nif->getLink(nif->getIndex(idx, "Data")));
 			skinID = nif->getBlockNumber(iSkin);
 
+			qsizetype numBones = nif->get<int>(iSkinData, "Num Bones");
+			boneData.fill( BoneData(), numBones );
+
 			auto iBones = nif->getLinkArray(iSkin, "Bones");
-			for ( const auto b : iBones ) {
+			for ( qsizetype i = 0; i < iBones.size(); i++ ) {
+				auto b = iBones.at( i );
+				if ( i < numBones )
+					boneData[i].bone = b;
 				if ( b == -1 )
 					continue;
 				auto iBone = nif->getBlockIndex(b);
 				boneNames.append(nif->resolveString(iBone, "Name"));
 			}
 
-			auto numBones = nif->get<int>(iSkinData, "Num Bones");
-			boneTransforms.resize(numBones);
 			auto iBoneList = nif->getIndex(iSkinData, "Bone List");
-			for ( int i = 0; i < numBones; i++ ) {
-				auto iBone = nif->getIndex( iBoneList, i );
-				Transform trans;
-				trans.rotation = nif->get<Matrix>(iBone, "Rotation");
-				trans.translation = nif->get<Vector3>(iBone, "Translation");
-				trans.scale = nif->get<float>(iBone, "Scale");
-				boneTransforms[i] = trans;
-			}
+			for ( int i = 0; i < numBones; i++ )
+				boneData[i].setTransform( nif, nif->getIndex( iBoneList, i ) );
 		}
 	}
 	// Do after dependent blocks above
