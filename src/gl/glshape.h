@@ -61,8 +61,23 @@ public:
 
 	// end IControllable
 
+	void updateBoneTransforms();
 	virtual void drawVerts() const {};
 	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); };
+
+	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
+	// attrMask & (1 << N) = enable vertex attribute N:
+	//     0: positions (vec3)
+	//     1: UVs (UV1 as vec2, or packed UV1 and UV2 as vec4)
+	//     2: colors (vec4)
+	//     3: normals (vec3)
+	//     4: tangents (vec3)
+	//     5: bitangents (vec3)
+	//     6: bone weights 0 to 3 (vec4), each element is bone index + weight * 65535.0/65536.0
+	//     7: bone weights 4 to 7 (vec4)
+	// 8..15: UV sets 0 to 7 (vec2)
+	// color = default color to use if vertex color data is not available or disabled
+	void drawShape( std::uint16_t attrMask, FloatVector4 color = FloatVector4( 1.0f ) ) const;
 
 protected:
 	int shapeNumber;
@@ -103,6 +118,8 @@ protected:
 	QVector<Vector3> bitangents;
 	//! UV coordinate sets
 	QVector<TexCoords> coords;
+	//! UV coordinate sets (packed UV1 and UV2)
+	QVector<Vector4> coords2;
 	//! Triangles
 	QVector<Triangle> triangles;
 	//! Strip points
@@ -114,16 +131,12 @@ protected:
 
 	//! Is the transform rigid or weighted?
 	bool transformRigid = true;
-	//! Transformed vertices
-	QVector<Vector3> transVerts;
-	//! Transformed normals
-	QVector<Vector3> transNorms;
-	//! Transformed colors (alpha blended)
-	QVector<Color4> transColors;
-	//! Transformed tangents
-	QVector<Vector3> transTangents;
-	//! Transformed bitangents
-	QVector<Vector3> transBitangents;
+	//! Bone transforms as 4x3 matrices
+	QVector<float> boneTransforms;
+	//! Bone weights 0 to 3 (integer part = bone index, fractional part = weight * 65535.0 / 65536.0)
+	QVector<Vector4> boneWeights0;
+	//! Bone weights 4 to 7
+	QVector<Vector4> boneWeights1;
 
 	//! Toggle for skinning
 	bool isSkinned = false;
@@ -131,8 +144,10 @@ protected:
 	int skeletonRoot = 0;
 	Transform skeletonTrans;
 	QVector<int> bones;
-	QVector<BoneWeights> weights;
+	QVector<BoneData> boneData;
 	QVector<SkinPartition> partitions;
+	// temporary buffer for bounding sphere calculation
+	QVector<Vector3> transVerts;
 
 	void resetSkeletonData();
 
@@ -167,7 +182,18 @@ protected:
 
 	bool isLOD = false;
 
-	NifSkopeOpenGLContext::ShapeDataHash	dataHash;
+	mutable NifSkopeOpenGLContext::ShapeDataHash	dataHash;
+
+public:
+	inline void clearHash()
+	{
+		dataHash.attrMask = 0;
+	}
+
+	inline const QVector<BoneData> & getBoneData() const
+	{
+		return boneData;
+	}
 };
 
 #endif
