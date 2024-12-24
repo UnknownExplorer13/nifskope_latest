@@ -23,10 +23,10 @@ uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone ma
 
 layout ( location = 0 ) in vec3 vertexPosition;
 layout ( location = 1 ) in vec4 multiTexCoord0;
-layout ( location = 4 ) in vec4 vertexColor;
-layout ( location = 5 ) in vec3 normalVector;
-layout ( location = 6 ) in vec3 tangentVector;
-layout ( location = 7 ) in vec3 bitangentVector;
+layout ( location = 2 ) in vec4 vertexColor;
+layout ( location = 3 ) in vec3 normalVector;
+layout ( location = 4 ) in vec3 tangentVector;
+layout ( location = 5 ) in vec3 bitangentVector;
 
 mat3 rotateEnv( mat3 m, float rz )
 {

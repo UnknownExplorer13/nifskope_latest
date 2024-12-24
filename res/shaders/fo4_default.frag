@@ -48,12 +48,16 @@ uniform float envReflection;
 in vec3 LightDir;
 in vec3 ViewDir;
 
+in vec2 texCoord;
+
 in vec4 A;
 in vec4 C;
 in vec4 D;
 
 in mat3 btnMatrix;
 in mat3 reflMatrix;
+
+out vec4 fragColor;
 
 vec3 ViewDir_norm = normalize( ViewDir );
 mat3 btnMatrix_norm = mat3( normalize( btnMatrix[0] ), normalize( btnMatrix[1] ), normalize( btnMatrix[2] ) );
@@ -206,7 +210,7 @@ vec4 colorLookup( float x, float y ) {
 
 void main( void )
 {
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
+	vec2 offset = texCoord.st * uvScale + uvOffset;
 
 	vec4 baseMap = texture( BaseMap, offset );
 
@@ -338,5 +342,5 @@ void main( void )
 
 	color.rgb = tonemap( color.rgb * D.a, A.a );
 
-	gl_FragColor = color;
+	fragColor = color;
 }
