@@ -1023,17 +1023,13 @@ void NifSkopeOpenGLContext::drawShape(
 	cacheLastItem = d;
 	geometryCache[i] = d;
 	cacheShapeCnt++;
-	auto	bufferCountAndSize = d->h.getBufferCountAndSize();
-	cacheBufferCnt += bufferCountAndSize.first;
-	cacheBytesUsed += bufferCountAndSize.second;
+	cacheBytesUsed += d->h.getBufferDataSize() + 24576;
 
 	f.glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
 }
 
-void NifSkopeOpenGLContext::setCacheLimits( size_t maxShapes, size_t maxBuffers, size_t maxBytes )
+void NifSkopeOpenGLContext::setCacheSize( size_t maxBytes )
 {
-	cacheMaxShapes = std::uint32_t( maxShapes );
-	cacheMaxBuffers = std::uint32_t( maxBuffers );
 	cacheMaxBytes = std::uint32_t( maxBytes );
 }
 
@@ -1046,15 +1042,12 @@ void NifSkopeOpenGLContext::shrinkCache( bool deleteAll )
 
 		if ( deleteAll ) {
 			cacheShapeCnt = 0;
-			cacheBufferCnt = 0;
 			cacheBytesUsed = 0;
 		} else {
-			if ( cacheShapeCnt < cacheMaxShapes && cacheBufferCnt < cacheMaxBuffers && cacheBytesUsed < cacheMaxBytes )
+			if ( cacheBytesUsed < cacheMaxBytes )
 				break;
 			cacheShapeCnt--;
-			auto	bufferCountAndSize = d->h.getBufferCountAndSize();
-			cacheBufferCnt -= bufferCountAndSize.first;
-			cacheBytesUsed -= bufferCountAndSize.second;
+			cacheBytesUsed -= d->h.getBufferDataSize() + 24576;
 		}
 
 		if ( !rehashNeeded ) {
@@ -1106,20 +1099,16 @@ inline std::uint32_t NifSkopeOpenGLContext::ShapeDataHash::hashFunction() const
 	return std::uint32_t( r );
 }
 
-std::pair< std::uint32_t, std::uint32_t > NifSkopeOpenGLContext::ShapeDataHash::getBufferCountAndSize() const
+size_t NifSkopeOpenGLContext::ShapeDataHash::getBufferDataSize() const
 {
 	std::uint64_t	tmp = ( ~attrMask >> 3 ) & 0x1111111111111111ULL;
 	tmp = ( tmp * 7U ) & attrMask;
-	std::uint64_t	tmp2 = ( tmp | ( tmp >> 1 ) | ( tmp >> 2 ) ) & 0x1111111111111111ULL;
-	std::uint32_t	numBuffers = std::uint32_t( std::popcount( tmp2 ) + 1 );
-
 	tmp = ( tmp + ( tmp >> 4 ) ) & 0x0F0F0F0F0F0F0F0FULL;
 	tmp = tmp + ( tmp >> 8 );
 	tmp = tmp + ( tmp >> 16 );
 	tmp = tmp + ( tmp >> 32 );
-	std::uint32_t	totalDataSize = std::uint32_t( ( tmp & 0xFFU ) * sizeof( float ) * numVerts + elementBytes );
-
-	return std::pair< std::uint32_t, std::uint32_t >( numBuffers, totalDataSize );
+	size_t	totalDataSize = size_t( tmp & 0xFFU ) * sizeof( float ) * numVerts + elementBytes;
+	return totalDataSize;
 }
 
 
@@ -1131,7 +1120,7 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 	std::uint64_t	attrMask = dataHash.attrMask;
 	std::uint32_t	vertCnt = dataHash.numVerts;
 	std::uint32_t	elementDataSize = dataHash.elementBytes;
-	std::uint32_t	attrDataSize = dataHash.getBufferCountAndSize().second - elementDataSize;
+	std::uint32_t	attrDataSize = dataHash.getBufferDataSize() - elementDataSize;
 	std::uintptr_t	attrOffset = 0;
 
 	QOpenGLFunctions_4_1_Core &	f = *( context.fn );

@@ -252,7 +252,7 @@ public:
 						const float * const * attrData, const void * elementData );
 		inline bool operator==( const ShapeDataHash & r ) const;
 		inline std::uint32_t hashFunction() const;
-		std::pair< std::uint32_t, std::uint32_t > getBufferCountAndSize() const;
+		size_t getBufferDataSize() const;
 	};
 
 	NifSkopeOpenGLContext( QOpenGLContext * context );
@@ -284,7 +284,7 @@ public:
 					unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
 					const float * const * attrData, const void * elementData );
 
-	void setCacheLimits( size_t maxShapes, size_t maxBuffers, size_t maxBytes );
+	void setCacheSize( size_t maxBytes );
 	void shrinkCache( bool deleteAll = false );
 	inline void flushCache()
 	{
@@ -340,11 +340,8 @@ protected:
 
 	std::vector< ShapeData * >	geometryCache;
 	ShapeData *	cacheLastItem = nullptr;
-	std::uint32_t	cacheShapeCnt = 0;
-	std::uint32_t	cacheBufferCnt = 0;
+	size_t	cacheShapeCnt = 0;
 	size_t	cacheBytesUsed = 0;
-	std::uint32_t	cacheMaxShapes = 1024;
-	std::uint32_t	cacheMaxBuffers = 8192;
 	size_t	cacheMaxBytes = 0x08000000;
 
 	Program *	currentProgram = nullptr;
