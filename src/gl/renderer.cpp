@@ -102,8 +102,7 @@ void Renderer::updateSettings()
 	cfg.sfParallaxOffset = settings.value( "Settings/Render/General/Sf Parallax Offset", 0.5f).toFloat();
 	cfg.cubeMapPathFO76 = settings.value( "Settings/Render/General/Cube Map Path FO 76", "textures/shared/cubemaps/mipblur_defaultoutside1.dds" ).toString();
 	cfg.cubeMapPathSTF = settings.value( "Settings/Render/General/Cube Map Path STF", "textures/cubemaps/cell_cityplazacube.dds" ).toString();
-	setCacheLimits( std::uint32_t( cfg.meshCacheSize ) << 6, std::uint32_t( cfg.meshCacheSize ) << 9,
-					std::uint32_t( cfg.meshCacheSize ) << 23 );
+	setCacheSize( std::uint32_t( cfg.meshCacheSize ) << 23 );
 	TexCache::loadSettings( settings );
 }
 
@@ -570,11 +569,7 @@ bool Renderer::setupProgramCE2( const NifModel * nif, Program * prog, Shape * me
 
 	prog->uniSampler_l( prog->uniLocation("textureUnits"), 2, texunit - 2, TexCache::num_texture_units - 2 );
 
-	{
-		const Transform &	t = mesh->viewTrans();
-		prog->uni3m( "normalMatrix", t.rotation );
-		prog->uni4m( "modelViewMatrix", t.toMatrix4() );
-	}
+	mesh->setUniforms( prog );
 
 	// setup alpha blending and testing
 
@@ -882,58 +877,11 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 		}
 	}
 
-	if ( nifVersion < 130 && prog->name == "sk_msn.prog" )
-		prog->uni3m( "viewMatrix", mesh->viewTrans().rotation );
-	else
-		prog->uni3m( "viewMatrix", scene->view.rotation );
+	mesh->setUniforms( prog );
 
-#if 0
-	// TODO
-	QMapIterator<int, Program::CoordType> itx( prog->texcoords );
-
-	while ( itx.hasNext() ) {
-		itx.next();
-
-		if ( !activateClientTexture( itx.key() ) )
-			return false;
-
-		auto it = itx.value();
-		if ( it == Program::CT_TANGENT ) {
-			if ( mesh->transTangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->transTangents.constData() );
-			} else if ( mesh->tangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->tangents.constData() );
-			} else {
-				return false;
-			}
-
-		} else if ( it == Program::CT_BITANGENT ) {
-			if ( mesh->transBitangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->transBitangents.constData() );
-			} else if ( mesh->bitangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->bitangents.constData() );
-			} else {
-				return false;
-			}
-		} else {
-			int txid = it;
-			if ( txid < 0 )
-				return false;
-
-			int set = 0;
-
-			if ( set < 0 || !(set < mesh->coords.count()) || !mesh->coords[set].count() )
-				return false;
-
-			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-			glTexCoordPointer( 2, GL_FLOAT, 0, mesh->coords[set].constData() );
-		}
-	}
-#endif
+	// TODO (Gavrant): suspicious code. Should the check be replaced with !bsprop->hasVertexAlpha ?
+	prog->uni1b( "noVertexAlpha", ( mesh->isVertexAlphaAnimation
+									|| ( nifVersion < 130 && lsp && !lsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) ) ) );
 
 	if ( mesh->isDoubleSided ) {
 		glDisable( GL_CULL_FACE );
@@ -942,13 +890,8 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 		glCullFace( GL_BACK );
 	}
 
-	// setup lighting
-
-	//glEnable( GL_LIGHTING );
-
 	// setup blending
 
-	glDisable( GL_ALPHA_TEST );
 	int	alphaTestFunc = -1;
 	float	alphaThreshold = 0.0f;
 	if ( mat ) {
@@ -988,8 +931,6 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 	}
 	prog->uni1i( "alphaTestFunc", alphaTestFunc );
 	prog->uni1f( "alphaThreshold", alphaThreshold );
-
-	glDisable( GL_COLOR_MATERIAL );
 
 	if ( !mesh->depthTest ) {
 		glDisable( GL_DEPTH_TEST );
@@ -1199,65 +1140,7 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 	prog->uni1f( "uvRotation", uvCenterAndRotation[2] );
 	prog->uni4f( "falloffParams", falloffParams );
 
-#if 0
-	// TODO
-	QMapIterator<int, Program::CoordType> itx( prog->texcoords );
-
-	while ( itx.hasNext() ) {
-		itx.next();
-
-		if ( !activateClientTexture( itx.key() ) )
-			return false;
-
-		auto it = itx.value();
-		if ( it == Program::CT_TANGENT ) {
-			if ( mesh->transTangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->transTangents.constData() );
-			} else if ( mesh->tangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->tangents.constData() );
-			} else {
-				return false;
-			}
-
-		} else if ( it == Program::CT_BITANGENT ) {
-			if ( mesh->transBitangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->transBitangents.constData() );
-			} else if ( mesh->bitangents.count() ) {
-				glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-				glTexCoordPointer( 3, GL_FLOAT, 0, mesh->bitangents.constData() );
-			} else {
-				return false;
-			}
-		} else if ( texprop ) {
-			int txid = it;
-			if ( txid < 0 )
-				return false;
-
-			int set = texprop->coordSet( txid );
-
-			if ( set < 0 || !(set < mesh->coords.count()) || !mesh->coords[set].count() )
-				return false;
-
-			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-			glTexCoordPointer( 2, GL_FLOAT, 0, mesh->coords[set].constData() );
-		} else if ( bsprop ) {
-			int txid = it;
-			if ( txid < 0 )
-				return false;
-
-			int set = 0;
-
-			if ( set < 0 || !(set < mesh->coords.count()) || !mesh->coords[set].count() )
-				return false;
-
-			glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-			glTexCoordPointer( 2, GL_FLOAT, 0, mesh->coords[set].constData() );
-		}
-	}
-#endif
+	mesh->setUniforms( prog );
 
 	if ( mesh->isDoubleSided ) {
 		glDisable( GL_CULL_FACE );
@@ -1300,7 +1183,6 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 
 	glProperty( mesh->findProperty< StencilProperty >() );
 
-	glDisable( GL_COLOR_MATERIAL );
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 
 	return true;

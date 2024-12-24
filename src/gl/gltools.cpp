@@ -49,24 +49,16 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 //! \file gltools.cpp GL helper functions
 
-BoneWeights::BoneWeights( const NifModel * nif, const QModelIndex & index, int b, int vcnt )
+BoneData::BoneData( const NifModel * nif, const QModelIndex & index, int b )
 {
 	trans  = Transform( nif, index );
 	auto sph = BoundSphere( nif, index );
 	center = sph.center;
 	radius = sph.radius;
 	bone = b;
-
-	QModelIndex idxWeights = nif->getIndex( index, "Vertex Weights" );
-	if ( vcnt && idxWeights.isValid() ) {
-		for ( int c = 0; c < nif->rowCount( idxWeights ); c++ ) {
-			QModelIndex idx = nif->getIndex( idxWeights, c );
-			weights.append( VertexWeight( nif->get<int>( idx, "Index" ), nif->get<float>( idx, "Weight" ) ) );
-		}
-	}
 }
 
-void BoneWeights::setTransform( const NifModel * nif, const QModelIndex & index )
+void BoneData::setTransform( const NifModel * nif, const QModelIndex & index )
 {
 	trans = Transform( nif, index );
 	auto sph = BoundSphere( nif, index );

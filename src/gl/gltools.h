@@ -40,7 +40,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QPair>
 
 
-//! @file gltools.h BoundSphere, VertexWeight, BoneWeights, SkinPartition
+//! @file gltools.h BoundSphere, VertexWeight, BoneData, SkinPartition
 
 
 using TriStrip = QVector<quint16>;
@@ -118,12 +118,12 @@ public:
 	float weight;
 };
 
-//! A set of vertices weighted to a bone
-class BoneWeights
+//! A bone transform and bounds
+class BoneData
 {
 public:
-	BoneWeights() {}
-	BoneWeights( const NifModel * nif, const QModelIndex & index, int b, int vcnt = 0 );
+	BoneData() {}
+	BoneData( const NifModel * nif, const QModelIndex & index, int b );
 
 	void setTransform( const NifModel * nif, const QModelIndex & index );
 
@@ -132,10 +132,9 @@ public:
 	float radius = 0;
 	Vector3 tcenter;
 	int bone = 0;
-	QVector<VertexWeight> weights;
 };
 
-class BoneWeightsUNorm : public BoneWeights
+class BoneWeightsUNorm : public BoneData
 {
 public:
 	BoneWeightsUNorm() {}
@@ -285,11 +284,9 @@ inline GLuint glClosestMatch( GLuint * buffer, GLint hits )
 void renderText( double x, double y, double z, const QString & str );
 void renderText( const Vector3 & c, const QString & str );
 
-static inline void setColorKeyFromID( int id )
+static inline FloatVector4 getColorKeyFromID( int id )
 {
-	GLubyte	idBuf[4];
-	FileBuffer::writeUInt32Fast( idBuf, std::uint32_t( id + 1 ) );
-	glColor4ubv( idBuf );
+	return FloatVector4( std::uint32_t( id + 1 ) ) * ( 1.0f / 255.0f ) + ( 1.0f / 1024.0f );
 }
 
 static inline int getIDFromColorKey( std::uint32_t rgba )

@@ -465,15 +465,7 @@ bool TexturingProperty::bind( int id, const QString & fname )
 
 bool TexturingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoords )
 {
-	if ( checkSet( textures[id].coordset, texcoords ) && bind( id ) ) {
-		glEnable( GL_TEXTURE_2D );
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		glTexCoordPointer( 2, GL_FLOAT, 0, texcoords[ textures[id].coordset ].data() );
-		return true;
-	} else {
-		glDisable( GL_TEXTURE_2D );
-		return false;
-	}
+	return ( checkSet( textures[id].coordset, texcoords ) && bind( id ) );
 }
 
 bool TexturingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoords, int stage )
@@ -537,9 +529,8 @@ int TexturingProperty::getId( const QString & texname )
 
 void glProperty( TexturingProperty * p )
 {
-	if ( p && p->scene->hasOption(Scene::DoTexturing) && p->bind(0) ) {
-		glEnable( GL_TEXTURE_2D );
-	}
+	if ( p && p->scene->hasOption(Scene::DoTexturing) )
+		p->bind( 0 );
 }
 
 /*
@@ -570,15 +561,7 @@ bool TextureProperty::bind()
 
 bool TextureProperty::bind( const QVector<QVector<Vector2> > & texcoords )
 {
-	if ( checkSet( 0, texcoords ) && bind() ) {
-		glEnable( GL_TEXTURE_2D );
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		glTexCoordPointer( 2, GL_FLOAT, 0, texcoords[ 0 ].data() );
-		return true;
-	} else {
-		glDisable( GL_TEXTURE_2D );
-		return false;
-	}
+	return ( checkSet( 0, texcoords ) && bind() );
 }
 
 QString TextureProperty::fileName() const
@@ -602,9 +585,8 @@ void TextureProperty::setController( const NifModel * nif, const QModelIndex & i
 
 void glProperty( TextureProperty * p )
 {
-	if ( p && p->scene->hasOption(Scene::DoTexturing) && p->bind() ) {
-		glEnable( GL_TEXTURE_2D );
-	}
+	if ( p && p->scene->hasOption(Scene::DoTexturing) )
+		p->bind();
 }
 
 /*
@@ -912,9 +894,8 @@ void BSShaderLightingProperty::resetParams()
 
 void glProperty( BSShaderLightingProperty * p )
 {
-	if ( p && p->scene->hasOption(Scene::DoTexturing) && p->bind(0) ) {
-		glEnable( GL_TEXTURE_2D );
-	}
+	if ( p && p->scene->hasOption(Scene::DoTexturing) )
+		p->bind( 0 );
 }
 
 void BSShaderLightingProperty::clear()
@@ -1145,15 +1126,7 @@ bool BSShaderLightingProperty::bind( const QStringView & fname, bool forceTextur
 
 bool BSShaderLightingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoords )
 {
-	if ( checkSet( 0, texcoords ) && bind( id ) ) {
-		glEnable( GL_TEXTURE_2D );
-		glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-		glTexCoordPointer( 2, GL_FLOAT, 0, texcoords[ 0 ].data() );
-		return true;
-	}
-
-	glDisable( GL_TEXTURE_2D );
-	return false;
+	return ( checkSet( 0, texcoords ) && bind( id ) );
 }
 
 enum

@@ -96,12 +96,14 @@ void Mesh::updateData( const NifModel * nif )
 
 		QModelIndex idxBones = nif->getIndex( iSkinData, "Bone List" );
 		if ( idxBones.isValid() ) {
-			int nTotalBones = bones.count();
+			int nTotalBones = bones.size();
 			int nBoneList = nif->rowCount( idxBones );
-			// Ignore weights listed in NiSkinData if NiSkinPartition exists
+#if 0
+			// TODO: Ignore weights listed in NiSkinData if NiSkinPartition exists
 			int vcnt = ( !iSkinPart.isValid() ? numVerts : 0 );
+#endif
 			for ( int b = 0; b < nBoneList && b < nTotalBones; b++ )
-				weights.append( BoneWeights( nif, nif->getIndex( idxBones, b ), bones[b], vcnt ) );
+				boneData.append( BoneData( nif, nif->getIndex( idxBones, b ), bones[b] ) );
 		}
 
 		if ( iSkinPart.isValid() ) {
@@ -255,7 +257,7 @@ void Mesh::updateData_NiMesh( const NifModel * nif )
 			tangents.resize( maxSize );
 			bitangents.resize( maxSize );
 			colors.resize( maxSize );
-			weights.resize( maxSize );
+			boneData.resize( maxSize );
 			if ( coords.size() == 0 )
 				coords.resize( 1 );
 
@@ -441,11 +443,11 @@ void Mesh::updateData_NiMesh( const NifModel * nif )
 	if ( !(semFlags & NiMesh::HAS_COLOR) )
 		colors.clear();
 	if ( !(semFlags & NiMesh::HAS_BLENDINDICES) || !(semFlags & NiMesh::HAS_BLENDWEIGHT) )
-		weights.clear();
+		boneData.clear();
 
 	Q_ASSERT( verts.size() == qsizetype(maxIndex + 1) );
 	Q_ASSERT( indices.size() == qsizetype(totalIndices) );
-	numVerts = verts.count();
+	numVerts = verts.size();
 
 	// Make geometry
 	triangles.resize( indices.size() / 3 );
@@ -500,18 +502,18 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 
 	// Fill vertex data
 	verts = nif->getArray<Vector3>( iData, "Vertices" );
-	numVerts = verts.count();
+	numVerts = verts.size();
 
 	norms = nif->getArray<Vector3>( iData, "Normals" );
-	if ( norms.count() < numVerts )
+	if ( norms.size() < numVerts )
 		norms.clear();
 
 	colors = nif->getArray<Color4>( iData, "Vertex Colors" );
-	if ( colors.count() < numVerts )
+	if ( colors.size() < numVerts )
 		colors.clear();
 	// Detect if "Has Vertex Colors" is set to Yes in NiTriShape
 	//	Used to compare against SLSF2_Vertex_Colors
-	hasVertexColors = (colors.count() > 0);
+	hasVertexColors = (colors.size() > 0);
 
 	tangents   = nif->getArray<Vector3>( iData, "Tangents" );
 	bitangents = nif->getArray<Vector3>( iData, "Bitangents" );
@@ -545,7 +547,7 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 		int nSets = nif->rowCount( iUVSets );
 		for ( int r = 0; r < nSets; r++ ) {
 			TexCoords tc = nif->getArray<Vector2>( nif->getIndex( iUVSets, r ) );
-			if ( tc.count() < numVerts )
+			if ( tc.size() < numVerts )
 				tc.clear();
 			coords.append( tc );
 		}
@@ -558,7 +560,7 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 		// TODO: check other indexes as well
 		// TODO (Gavrant): test this!
 		QVector<Triangle> dataTris = nif->getArray<Triangle>( iData, "Triangles" );
-		int nDataTris = dataTris.count();
+		int nDataTris = dataTris.size();
 
 		for ( int i = 0; i < nDataTris; i++ ) {
 			Triangle t = dataTris[i];
@@ -566,7 +568,7 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 				triangles.append(t);
 		}
 
-		int diff = nDataTris - triangles.count();
+		int diff = nDataTris - triangles.size();
 		if ( diff > 0 ) {
 			int block_idx = nif->getBlockNumber( nif->getIndex( iData, "Triangles" ) );
 			Message::append( tr( "Warnings were generated while rendering mesh." ),
@@ -615,45 +617,39 @@ void Mesh::transformShapes()
 
 	transformRigid = true;
 
-	if ( isSkinned && ( weights.count() || partitions.count() ) && scene->hasOption(Scene::DoSkinning) ) {
+	if ( isSkinned && ( boneData.size() || partitions.size() ) && scene->hasOption(Scene::DoSkinning) ) {
 		transformRigid = false;
 
-		int vcnt = verts.count();
-		int ncnt = norms.count();
-		int tcnt = tangents.count();
-		int bcnt = bitangents.count();
+		int vcnt = verts.size();
+		int ncnt = norms.size();
+		int tcnt = tangents.size();
+		int bcnt = bitangents.size();
 
 		transVerts.resize( vcnt );
 		transVerts.fill( Vector3() );
-		transNorms.resize( ncnt );
-		transNorms.fill( Vector3() );
-		transTangents.resize( tcnt );
-		transTangents.fill( Vector3() );
-		transBitangents.resize( bcnt );
-		transBitangents.fill( Vector3() );
 
 		Node * root = findParent( skeletonRoot );
 
-		if ( partitions.count() ) {
+		if ( partitions.size() ) {
 			for ( const SkinPartition& part : partitions ) {
-				QVector<Transform> boneTrans( part.boneMap.count() );
+				QVector<Transform> boneTrans( part.boneMap.size() );
 
-				for ( int t = 0; t < boneTrans.count(); t++ ) {
+				for ( int t = 0; t < boneTrans.size(); t++ ) {
 					Node * bone = root ? root->findChild( bones.value( part.boneMap[t] ) ) : 0;
 					boneTrans[ t ] = scene->view;
 
 					if ( bone )
-						boneTrans[ t ] = boneTrans[ t ] * bone->localTrans( skeletonRoot ) * weights.value( part.boneMap[t] ).trans;
+						boneTrans[ t ] = boneTrans[ t ] * bone->localTrans( skeletonRoot ) * boneData.value( part.boneMap[t] ).trans;
 
-					//if ( bone ) boneTrans[ t ] = bone->viewTrans() * weights.value( part.boneMap[t] ).trans;
+					//if ( bone ) boneTrans[ t ] = bone->viewTrans() * boneData.value( part.boneMap[t] ).trans;
 				}
 
-				for ( int v = 0; v < part.vertexMap.count(); v++ ) {
+				for ( int v = 0; v < part.vertexMap.size(); v++ ) {
 					int vindex = part.vertexMap[ v ];
 					if ( vindex < 0 || vindex >= vcnt )
 						break;
 
-					if ( transVerts[vindex] == Vector3() ) {
+					if ( verts[vindex] == Vector3() ) {
 						for ( int w = 0; w < part.numWeightsPerVertex; w++ ) {
 							QPair<int, float> weight = part.weights[ v * part.numWeightsPerVertex + w ];
 
@@ -661,64 +657,52 @@ void Mesh::transformShapes()
 							Transform trans = boneTrans.value( weight.first );
 
 							if ( vcnt > vindex )
-								transVerts[vindex] += trans * verts[vindex] * weight.second;
+								verts[vindex] += trans * verts[vindex] * weight.second;
 							if ( ncnt > vindex )
-								transNorms[vindex] += trans.rotation * norms[vindex] * weight.second;
+								norms[vindex] += trans.rotation * norms[vindex] * weight.second;
 							if ( tcnt > vindex )
-								transTangents[vindex] += trans.rotation * tangents[vindex] * weight.second;
+								tangents[vindex] += trans.rotation * tangents[vindex] * weight.second;
 							if ( bcnt > vindex )
-								transBitangents[vindex] += trans.rotation * bitangents[vindex] * weight.second;
+								bitangents[vindex] += trans.rotation * bitangents[vindex] * weight.second;
 						}
 					}
 				}
 			}
 		} else {
 			int x = 0;
-			for ( const BoneWeights& bw : weights ) {
+			for ( const BoneData& bw : boneData ) {
 				Transform trans = viewTrans() * skeletonTrans;
 				Node * bone = root ? root->findChild( bw.bone ) : nullptr;
 
 				if ( bone ) {
 					trans = trans * bone->localTrans( skeletonRoot ) * bw.trans;
-					weights[x].tcenter = bone->viewTrans() * bw.center;
+					boneData[x].tcenter = bone->viewTrans() * bw.center;
 				}
 				x++;
 
+#if 0
+				// TODO
 				for ( const VertexWeight& vw : bw.weights ) {
 					int vindex = vw.vertex;
 					if ( vindex < 0 || vindex >= vcnt )
 						break;
 
 					if ( vcnt > vindex )
-						transVerts[vindex] += trans * verts[vindex] * vw.weight;
+						verts[vindex] += trans * verts[vindex] * vw.weight;
 					if ( ncnt > vindex )
-						transNorms[vindex] += trans.rotation * norms[vindex] * vw.weight;
+						norms[vindex] += trans.rotation * norms[vindex] * vw.weight;
 					if ( tcnt > vindex )
-						transTangents[vindex] += trans.rotation * tangents[vindex] * vw.weight;
+						tangents[vindex] += trans.rotation * tangents[vindex] * vw.weight;
 					if ( bcnt > vindex )
-						transBitangents[vindex] += trans.rotation * bitangents[vindex] * vw.weight;
+						bitangents[vindex] += trans.rotation * bitangents[vindex] * vw.weight;
 				}
+#endif
 			}
 		}
 
-		for ( int n = 0; n < transNorms.count(); n++ )
-			transNorms[n].normalize();
-
-		for ( int t = 0; t < transTangents.count(); t++ )
-			transTangents[t].normalize();
-
-		for ( int t = 0; t < transBitangents.count(); t++ )
-			transBitangents[t].normalize();
-
 		boundSphere = BoundSphere( transVerts );
-		boundSphere.applyInv( viewTrans() );
+		boundSphere.applyInv( worldTrans() );
 		needUpdateBounds = false;
-	} else {
-		transVerts = verts;
-		transNorms = norms;
-		transTangents = tangents;
-		transBitangents = bitangents;
-		transColors = colors;
 	}
 
 	sortedTriangles = triangles;
@@ -726,16 +710,16 @@ void Mesh::transformShapes()
 	MaterialProperty * matprop = findProperty<MaterialProperty>();
 	if ( matprop && matprop->alphaValue() != 1.0 ) {
 		float a = matprop->alphaValue();
-		transColors.resize( colors.count() );
+		colors.resize( colors.size() );
 
-		for ( int c = 0; c < colors.count(); c++ )
-			transColors[c] = colors[c].blend( a );
+		for ( int c = 0; c < colors.size(); c++ )
+			colors[c] = colors[c].blend( a );
 	} else {
-		transColors = colors;
+		colors = colors;
 		// TODO (Gavrant): suspicious code. Should the check be replaced with !bssp.hasVertexAlpha ?
 		if ( bslsp && !bslsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) ) {
-			for ( int c = 0; c < colors.count(); c++ )
-				transColors[c] = Color4( colors[c].red(), colors[c].green(), colors[c].blue(), 1.0f );
+			for ( int c = 0; c < colors.size(); c++ )
+				colors[c] = Color4( colors[c].red(), colors[c].green(), colors[c].blue(), 1.0f );
 		}
 	}
 }
@@ -769,7 +753,7 @@ void Mesh::drawShapes( NodeList * secondPass )
 
 	if ( Node::SELECTING ) {
 		if ( scene->isSelModeObject() ) {
-			setColorKeyFromID( nodeId );
+			getColorKeyFromID( nodeId );
 		} else {
 			glColor4f( 0, 0, 0, 1 );
 		}
@@ -802,20 +786,20 @@ void Mesh::drawShapes( NodeList * secondPass )
 		glPolygonOffset( 1.0f, 2.0f );
 
 	glEnableClientState( GL_VERTEX_ARRAY );
-	glVertexPointer( 3, GL_FLOAT, 0, transVerts.constData() );
+	glVertexPointer( 3, GL_FLOAT, 0, verts.constData() );
 
 	if ( !Node::SELECTING ) [[likely]] {
-		if ( transNorms.count() ) {
+		if ( norms.size() ) {
 			glEnableClientState( GL_NORMAL_ARRAY );
-			glNormalPointer( GL_FLOAT, 0, transNorms.constData() );
+			glNormalPointer( GL_FLOAT, 0, norms.constData() );
 		}
 
 		// Do VCs if legacy or if either bslsp or bsesp is set
 		bool doVCs = ( !bssp || bssp->hasSF2(ShaderFlags::SLSF2_Vertex_Colors) || bssp->bsVersion < 83 );
 
-		if ( transColors.count() && scene->hasOption(Scene::DoVertexColors) && doVCs ) {
+		if ( colors.size() && scene->hasOption(Scene::DoVertexColors) && doVCs ) {
 			glEnableClientState( GL_COLOR_ARRAY );
-			glColorPointer( 4, GL_FLOAT, 0, transColors.constData() );
+			glColorPointer( 4, GL_FLOAT, 0, colors.constData() );
 		} else {
 			if ( !hasVertexColors && (bslsp && bslsp->hasVertexColors) ) {
 				// Correctly blacken the mesh if SLSF2_Vertex_Colors is still on
@@ -850,10 +834,10 @@ void Mesh::drawShapes( NodeList * secondPass )
 
 	if ( !isLOD ) {
 		// render the triangles
-		if ( sortedTriangles.count() )
-			glDrawElements( GL_TRIANGLES, sortedTriangles.count() * 3, GL_UNSIGNED_SHORT, sortedTriangles.constData() );
+		if ( sortedTriangles.size() )
+			glDrawElements( GL_TRIANGLES, sortedTriangles.size() * 3, GL_UNSIGNED_SHORT, sortedTriangles.constData() );
 
-	} else if ( sortedTriangles.count() ) {
+	} else if ( sortedTriangles.size() ) {
 		auto lod0 = nif->get<uint>( iBlock, "LOD0 Size" );
 		auto lod1 = nif->get<uint>( iBlock, "LOD1 Size" );
 		auto lod2 = nif->get<uint>( iBlock, "LOD2 Size" );
@@ -866,24 +850,24 @@ void Mesh::drawShapes( NodeList * secondPass )
 		// If Level1, also render Level2
 		switch ( scene->lodLevel ) {
 		case Scene::Level0:
-			if ( lod2tris.count() )
-				glDrawElements( GL_TRIANGLES, lod2tris.count() * 3, GL_UNSIGNED_SHORT, lod2tris.constData() );
+			if ( lod2tris.size() )
+				glDrawElements( GL_TRIANGLES, lod2tris.size() * 3, GL_UNSIGNED_SHORT, lod2tris.constData() );
 			[[fallthrough]];
 		case Scene::Level1:
-			if ( lod1tris.count() )
-				glDrawElements( GL_TRIANGLES, lod1tris.count() * 3, GL_UNSIGNED_SHORT, lod1tris.constData() );
+			if ( lod1tris.size() )
+				glDrawElements( GL_TRIANGLES, lod1tris.size() * 3, GL_UNSIGNED_SHORT, lod1tris.constData() );
 			[[fallthrough]];
 		case Scene::Level2:
 		default:
-			if ( lod0tris.count() )
-				glDrawElements( GL_TRIANGLES, lod0tris.count() * 3, GL_UNSIGNED_SHORT, lod0tris.constData() );
+			if ( lod0tris.size() )
+				glDrawElements( GL_TRIANGLES, lod0tris.size() * 3, GL_UNSIGNED_SHORT, lod0tris.constData() );
 			break;
 		}
 	}
 
 	// render the tristrips
 	for ( const auto & s : tristrips )
-		glDrawElements( GL_TRIANGLE_STRIP, s.count(), GL_UNSIGNED_SHORT, s.constData() );
+		glDrawElements( GL_TRIANGLE_STRIP, s.size(), GL_UNSIGNED_SHORT, s.constData() );
 
 	if ( isDoubleSided ) {
 		glEnable( GL_CULL_FACE );
@@ -913,11 +897,11 @@ void Mesh::drawVerts() const
 
 	glBegin( GL_POINTS );
 
-	for ( int i = 0; i < transVerts.count(); i++ ) {
+	for ( int i = 0; i < verts.size(); i++ ) {
 		if ( Node::SELECTING ) {
-			setColorKeyFromID( ( shapeNumber << 16 ) + i );
+			getColorKeyFromID( ( shapeNumber << 16 ) + i );
 		}
-		glVertex( transVerts.value( i ) );
+		glVertex( verts.value( i ) );
 	}
 
 	// Highlight selected vertex
@@ -925,7 +909,7 @@ void Mesh::drawVerts() const
 		auto idx = scene->currentIndex;
 		if ( idx.data( NifSkopeDisplayRole ).toString() == "Vertices" ) {
 			glHighlightColor();
-			glVertex( transVerts.value( idx.row() ) );
+			glVertex( verts.value( idx.row() ) );
 		}
 	}
 
@@ -1005,8 +989,8 @@ void Mesh::drawSelection() const
 	{
 		glBegin( GL_POINTS );
 
-		for ( int j = 0; j < transVerts.count(); j++ )
-			glVertex( transVerts.value( j ) );
+		for ( int j = 0; j < verts.size(); j++ )
+			glVertex( verts.value( j ) );
 
 		glEnd();
 
@@ -1014,7 +998,7 @@ void Mesh::drawSelection() const
 			glDepthFunc( GL_ALWAYS );
 			glHighlightColor();
 			glBegin( GL_POINTS );
-			glVertex( transVerts.value( i ) );
+			glVertex( verts.value( i ) );
 			glEnd();
 		}
 	}
@@ -1029,7 +1013,7 @@ void Mesh::drawSelection() const
 				QModelIndex iPoints = nif->getIndex( points, j );
 
 				for ( int k = 0; k < nif->rowCount( iPoints ); k++ ) {
-					glVertex( transVerts.value( nif->get<quint16>( nif->getIndex( iPoints, k ) ) ) );
+					glVertex( verts.value( nif->get<quint16>( nif->getIndex( iPoints, k ) ) ) );
 				}
 			}
 		}
@@ -1044,11 +1028,11 @@ void Mesh::drawSelection() const
 
 			if ( nif->isArray( idx ) ) {
 				for ( int j = 0; j < nif->rowCount( iPoints ); j++ ) {
-					glVertex( transVerts.value( nif->get<quint16>( nif->getIndex( iPoints, j ) ) ) );
+					glVertex( verts.value( nif->get<quint16>( nif->getIndex( iPoints, j ) ) ) );
 				}
 			} else {
 				iPoints = idx.parent();
-				glVertex( transVerts.value( nif->get<quint16>( nif->getIndex( iPoints, i ) ) ) );
+				glVertex( verts.value( nif->get<quint16>( nif->getIndex( iPoints, i ) ) ) );
 			}
 
 			glEnd();
@@ -1069,17 +1053,17 @@ void Mesh::drawSelection() const
 
 		glBegin( GL_LINES );
 
-		for ( int j = 0; j < transVerts.count() && j < transNorms.count(); j++ ) {
-			glVertex( transVerts.value( j ) );
-			glVertex( transVerts.value( j ) + transNorms.value( j ) * normalScale );
+		for ( int j = 0; j < verts.size() && j < norms.size(); j++ ) {
+			glVertex( verts.value( j ) );
+			glVertex( verts.value( j ) + norms.value( j ) * normalScale );
 		}
 
 		if ( n == "TSpace" ) {
-			for ( int j = 0; j < transVerts.count() && j < transTangents.count() && j < transBitangents.count(); j++ ) {
-				glVertex( transVerts.value( j ) );
-				glVertex( transVerts.value( j ) + transTangents.value( j ) * normalScale );
-				glVertex( transVerts.value( j ) );
-				glVertex( transVerts.value( j ) + transBitangents.value( j ) * normalScale );
+			for ( int j = 0; j < verts.size() && j < tangents.size() && j < bitangents.size(); j++ ) {
+				glVertex( verts.value( j ) );
+				glVertex( verts.value( j ) + tangents.value( j ) * normalScale );
+				glVertex( verts.value( j ) );
+				glVertex( verts.value( j ) + bitangents.value( j ) * normalScale );
 			}
 		}
 
@@ -1089,8 +1073,8 @@ void Mesh::drawSelection() const
 			glDepthFunc( GL_ALWAYS );
 			glHighlightColor();
 			glBegin( GL_LINES );
-			glVertex( transVerts.value( i ) );
-			glVertex( transVerts.value( i ) + transNorms.value( i ) * normalScale );
+			glVertex( verts.value( i ) );
+			glVertex( verts.value( i ) + norms.value( i ) * normalScale );
 			glEnd();
 		}
 	}
@@ -1104,11 +1088,11 @@ void Mesh::drawSelection() const
 
 		glBegin( GL_LINES );
 
-		for ( int j = 0; j < transVerts.count() && j < transTangents.count(); j++ ) {
-			glVertex( transVerts.value( j ) );
-			glVertex( transVerts.value( j ) + transTangents.value( j ) * normalScale * 2 );
-			glVertex( transVerts.value( j ) );
-			glVertex( transVerts.value( j ) - transTangents.value( j ) * normalScale / 2 );
+		for ( int j = 0; j < verts.size() && j < tangents.size(); j++ ) {
+			glVertex( verts.value( j ) );
+			glVertex( verts.value( j ) + tangents.value( j ) * normalScale * 2 );
+			glVertex( verts.value( j ) );
+			glVertex( verts.value( j ) - tangents.value( j ) * normalScale / 2 );
 		}
 
 		glEnd();
@@ -1117,10 +1101,10 @@ void Mesh::drawSelection() const
 			glDepthFunc( GL_ALWAYS );
 			glHighlightColor();
 			glBegin( GL_LINES );
-			glVertex( transVerts.value( i ) );
-			glVertex( transVerts.value( i ) + transTangents.value( i ) * normalScale * 2 );
-			glVertex( transVerts.value( i ) );
-			glVertex( transVerts.value( i ) - transTangents.value( i ) * normalScale / 2 );
+			glVertex( verts.value( i ) );
+			glVertex( verts.value( i ) + tangents.value( i ) * normalScale * 2 );
+			glVertex( verts.value( i ) );
+			glVertex( verts.value( i ) - tangents.value( i ) * normalScale / 2 );
 			glEnd();
 		}
 	}
@@ -1134,11 +1118,11 @@ void Mesh::drawSelection() const
 
 		glBegin( GL_LINES );
 
-		for ( int j = 0; j < transVerts.count() && j < transBitangents.count(); j++ ) {
-			glVertex( transVerts.value( j ) );
-			glVertex( transVerts.value( j ) + transBitangents.value( j ) * normalScale * 2 );
-			glVertex( transVerts.value( j ) );
-			glVertex( transVerts.value( j ) - transBitangents.value( j ) * normalScale / 2 );
+		for ( int j = 0; j < verts.size() && j < bitangents.size(); j++ ) {
+			glVertex( verts.value( j ) );
+			glVertex( verts.value( j ) + bitangents.value( j ) * normalScale * 2 );
+			glVertex( verts.value( j ) );
+			glVertex( verts.value( j ) - bitangents.value( j ) * normalScale / 2 );
 		}
 
 		glEnd();
@@ -1147,10 +1131,10 @@ void Mesh::drawSelection() const
 			glDepthFunc( GL_ALWAYS );
 			glHighlightColor();
 			glBegin( GL_LINES );
-			glVertex( transVerts.value( i ) );
-			glVertex( transVerts.value( i ) + transBitangents.value( i ) * normalScale * 2 );
-			glVertex( transVerts.value( i ) );
-			glVertex( transVerts.value( i ) - transBitangents.value( i ) * normalScale / 2 );
+			glVertex( verts.value( i ) );
+			glVertex( verts.value( i ) + bitangents.value( i ) * normalScale * 2 );
+			glVertex( verts.value( i ) );
+			glVertex( verts.value( i ) - bitangents.value( i ) * normalScale / 2 );
 			glEnd();
 		}
 	}
@@ -1160,10 +1144,10 @@ void Mesh::drawSelection() const
 
 		for ( const Triangle& tri : triangles ) {
 			glBegin( GL_TRIANGLES );
-			glVertex( transVerts.value( tri.v1() ) );
-			glVertex( transVerts.value( tri.v2() ) );
-			glVertex( transVerts.value( tri.v3() ) );
-			//glVertex( transVerts.value( tri.v1() ) );
+			glVertex( verts.value( tri.v1() ) );
+			glVertex( verts.value( tri.v2() ) );
+			glVertex( verts.value( tri.v3() ) );
+			//glVertex( verts.value( tri.v1() ) );
 			glEnd();
 		}
 
@@ -1173,10 +1157,10 @@ void Mesh::drawSelection() const
 			glHighlightColor();
 			Triangle tri = triangles.value( i );
 			glBegin( GL_TRIANGLES );
-			glVertex( transVerts.value( tri.v1() ) );
-			glVertex( transVerts.value( tri.v2() ) );
-			glVertex( transVerts.value( tri.v3() ) );
-			//glVertex( transVerts.value( tri.v1() ) );
+			glVertex( verts.value( tri.v1() ) );
+			glVertex( verts.value( tri.v2() ) );
+			glVertex( verts.value( tri.v3() ) );
+			//glVertex( verts.value( tri.v1() ) );
 			glEnd();
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		}
@@ -1189,15 +1173,15 @@ void Mesh::drawSelection() const
 			quint16 a = strip.value( 0 );
 			quint16 b = strip.value( 1 );
 
-			for ( int v = 2; v < strip.count(); v++ ) {
+			for ( int v = 2; v < strip.size(); v++ ) {
 				quint16 c = strip[v];
 
 				if ( a != b && b != c && c != a ) {
 					glBegin( GL_LINE_STRIP );
-					glVertex( transVerts.value( a ) );
-					glVertex( transVerts.value( b ) );
-					glVertex( transVerts.value( c ) );
-					glVertex( transVerts.value( a ) );
+					glVertex( verts.value( a ) );
+					glVertex( verts.value( b ) );
+					glVertex( verts.value( c ) );
+					glVertex( verts.value( a ) );
 					glEnd();
 				}
 
@@ -1212,17 +1196,17 @@ void Mesh::drawSelection() const
 			quint16 a = strip.value( 0 );
 			quint16 b = strip.value( 1 );
 
-			for ( int v = 2; v < strip.count(); v++ ) {
+			for ( int v = 2; v < strip.size(); v++ ) {
 				quint16 c = strip[v];
 
 				if ( a != b && b != c && c != a ) {
 					glDepthFunc( GL_ALWAYS );
 					glHighlightColor();
 					glBegin( GL_LINE_STRIP );
-					glVertex( transVerts.value( a ) );
-					glVertex( transVerts.value( b ) );
-					glVertex( transVerts.value( c ) );
-					glVertex( transVerts.value( a ) );
+					glVertex( verts.value( a ) );
+					glVertex( verts.value( b ) );
+					glVertex( verts.value( c ) );
+					glVertex( verts.value( a ) );
 					glEnd();
 				}
 
@@ -1234,7 +1218,7 @@ void Mesh::drawSelection() const
 
 	if ( n == "Partitions" ) {
 
-		for ( int c = 0; c < partitions.count(); c++ ) {
+		for ( int c = 0; c < partitions.size(); c++ ) {
 			if ( c == i )
 				glHighlightColor();
 			else
@@ -1244,25 +1228,25 @@ void Mesh::drawSelection() const
 
 			for ( const Triangle& tri : partitions[c].triangles ) {
 				glBegin( GL_LINE_STRIP );
-				glVertex( transVerts.value( vmap.value( tri.v1() ) ) );
-				glVertex( transVerts.value( vmap.value( tri.v2() ) ) );
-				glVertex( transVerts.value( vmap.value( tri.v3() ) ) );
-				glVertex( transVerts.value( vmap.value( tri.v1() ) ) );
+				glVertex( verts.value( vmap.value( tri.v1() ) ) );
+				glVertex( verts.value( vmap.value( tri.v2() ) ) );
+				glVertex( verts.value( vmap.value( tri.v3() ) ) );
+				glVertex( verts.value( vmap.value( tri.v1() ) ) );
 				glEnd();
 			}
 			for ( const TriStrip& strip : partitions[c].tristrips ) {
 				quint16 a = vmap.value( strip.value( 0 ) );
 				quint16 b = vmap.value( strip.value( 1 ) );
 
-				for ( int v = 2; v < strip.count(); v++ ) {
+				for ( int v = 2; v < strip.size(); v++ ) {
 					quint16 c = vmap.value( strip[v] );
 
 					if ( a != b && b != c && c != a ) {
 						glBegin( GL_LINE_STRIP );
-						glVertex( transVerts.value( a ) );
-						glVertex( transVerts.value( b ) );
-						glVertex( transVerts.value( c ) );
-						glVertex( transVerts.value( a ) );
+						glVertex( verts.value( a ) );
+						glVertex( verts.value( b ) );
+						glVertex( verts.value( c ) );
+						glVertex( verts.value( a ) );
 						glEnd();
 					}
 
