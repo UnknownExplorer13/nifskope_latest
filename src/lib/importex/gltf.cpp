@@ -67,14 +67,13 @@ static inline void exportFloats( QByteArray & bin, const float * data, size_t n 
 	bin.append( buf, nBytes );
 }
 
-void exportCreateInverseBoneMatrices(tinygltf::Model& model, QByteArray& bin, const BSMesh* bsmesh, int gltfSkinID, GltfStore& gltf)
+void exportCreateInverseBoneMatrices(tinygltf::Model& model, QByteArray& bin, const BSMesh* bsmesh, int gltfSkinID, [[maybe_unused]] GltfStore& gltf)
 {
-	(void) gltf;
 	auto bufferViewIndex = model.bufferViews.size();
 	auto acc = tinygltf::Accessor();
 	acc.bufferView = bufferViewIndex;
 	acc.componentType = TINYGLTF_COMPONENT_TYPE_FLOAT;
-	acc.count = bsmesh->boneTransforms.size();
+	acc.count = bsmesh->getBoneData().size();
 	acc.type = TINYGLTF_TYPE_MAT4;
 	model.accessors.push_back(acc);
 
@@ -86,9 +85,8 @@ void exportCreateInverseBoneMatrices(tinygltf::Model& model, QByteArray& bin, co
 
 	model.skins[gltfSkinID].inverseBindMatrices = bufferViewIndex;
 
-	for ( const auto& b : bsmesh->boneTransforms ) {
-		exportFloats( bin, b.toMatrix4().data(), 16 );
-	}
+	for ( const auto & b : bsmesh->getBoneData() )
+		exportFloats( bin, b.trans.toMatrix4().data(), 16 );
 }
 
 static QString exportGetMaterialPath( const NifModel * nif, const QModelIndex & index )
@@ -265,7 +263,9 @@ bool exportCreateNodes(const NifModel* nif, const Scene* scene, tinygltf::Model&
 
 				for ( int i = 0; i < mesh->boneNames.size(); i++ ) {
 					auto& name = mesh->boneNames.at(i);
-					auto trans = mesh->boneTransforms.at(i).toMatrix4().inverted();
+					Matrix4	trans;
+					if ( i < mesh->getBoneData().size() )
+						trans = mesh->getBoneData()[i].trans.toMatrix4().inverted();
 
 					auto gltfNode = tinygltf::Node();
 					gltfNode.name = name.toStdString();
