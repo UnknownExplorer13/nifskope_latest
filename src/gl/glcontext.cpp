@@ -812,17 +812,23 @@ NifSkopeOpenGLContext::~NifSkopeOpenGLContext()
 NifSkopeOpenGLContext::Shader * NifSkopeOpenGLContext::createShader( const QString & name )
 {
 	std::string	nameStr( name.toLower().toStdString() );
+	const char *	nameData = nameStr.c_str();
+	size_t	nameLen = nameStr.length();
+	if ( !( nameLen >= 5 && nameData[nameLen - 5] == '.' ) )
+		return nullptr;
 
 	unsigned int	t = 0;
-	if ( nameStr.ends_with( ".frag" ) )
+	if ( nameStr.ends_with( "frag" ) )
 		t = GL_FRAGMENT_SHADER;
-	else if ( nameStr.ends_with( ".vert" ) )
+	else if ( nameStr.ends_with( "geom" ) )
+		t = GL_GEOMETRY_SHADER;
+	else if ( nameStr.ends_with( "vert" ) )
 		t = GL_VERTEX_SHADER;
-	else if ( !nameStr.ends_with( ".prog" ) )
+	else if ( !nameStr.ends_with( "prog" ) )
 		return nullptr;
 
 	std::uint32_t	m = shaderHashMask;
-	std::uint32_t	h = hashFunctionUInt32( nameStr.c_str(), nameStr.length() ) & m;
+	std::uint32_t	h = hashFunctionUInt32( nameData, nameLen ) & m;
 	Shader *	p;
 	for ( ; ( p = shadersAndPrograms[h] ) != nullptr; h = ( h + 1 ) & m ) {
 		if ( p->name == nameStr )
@@ -840,9 +846,9 @@ NifSkopeOpenGLContext::Shader * NifSkopeOpenGLContext::createShader( const QStri
 	}
 
 	std::string_view *	storedName = shaderDataBuf.constructObject< std::string_view >();
-	char *	s = shaderDataBuf.allocateObjects< char >( nameStr.length() + 1 );
-	std::memcpy( s, nameStr.c_str(), nameStr.length() );
-	*storedName = std::string_view( s, nameStr.length() );
+	char *	s = shaderDataBuf.allocateObjects< char >( nameLen + 1 );
+	std::memcpy( s, nameData, nameLen );
+	*storedName = std::string_view( s, nameLen );
 	if ( t )
 		p = new Shader( *storedName, t, fn );
 	else
@@ -966,20 +972,15 @@ void NifSkopeOpenGLContext::setGlobalUniforms()
 	fn->glUseProgram( 0 );
 }
 
-void NifSkopeOpenGLContext::drawShape(
-	unsigned int numVerts, std::uint64_t attrMask,
-	unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+void NifSkopeOpenGLContext::bindShape(
+	unsigned int numVerts, std::uint64_t attrMask, size_t elementDataSize,
 	const float * const * attrData, const void * elementData )
 {
-	size_t	elementDataSize = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
-	elementDataSize = elementDataSize * numIndices;
-	ShapeDataHash	h( numVerts, attrMask, elementDataSize, attrData, elementData );
-	drawShape( h, numIndices, elementMode, elementType, attrData, elementData );
+	bindShape( ShapeDataHash( numVerts, attrMask, elementDataSize, attrData, elementData ), attrData, elementData );
 }
 
-void NifSkopeOpenGLContext::drawShape(
-	const ShapeDataHash & h, unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
-	const float * const * attrData, const void * elementData )
+void NifSkopeOpenGLContext::bindShape(
+	const ShapeDataHash & h, const float * const * attrData, const void * elementData )
 {
 	if ( ( cacheShapeCnt * 3U ) >= ( geometryCache.size() * 2U ) ) [[unlikely]]
 		rehashCache();
@@ -1006,7 +1007,6 @@ void NifSkopeOpenGLContext::drawShape(
 		}
 		cacheLastItem = d;
 		f.glBindVertexArray( d->vao );
-		f.glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
 		return;
 	}
 
@@ -1024,8 +1024,6 @@ void NifSkopeOpenGLContext::drawShape(
 	geometryCache[i] = d;
 	cacheShapeCnt++;
 	cacheBytesUsed += d->h.getBufferDataSize() + 24576;
-
-	f.glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
 }
 
 void NifSkopeOpenGLContext::setCacheSize( size_t maxBytes )

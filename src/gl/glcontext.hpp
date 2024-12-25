@@ -99,11 +99,11 @@ protected:
 		bool _or;
 	};
 
-	//! Parsing and loading of .frag or .vert files
+	//! Parsing and loading of .frag, .geom or .vert files
 	class Shader
 	{
 public:
-		// type = GL_FRAGMENT_SHADER or GL_VERTEX_SHADER, or 0 for programs
+		// type = GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER or GL_VERTEX_SHADER, or 0 for programs
 		Shader( const std::string_view & name, unsigned int type, QOpenGLFunctions_4_1_Core * fn );
 		~Shader();
 
@@ -255,6 +255,31 @@ public:
 		size_t getBufferDataSize() const;
 	};
 
+	//! Context Functions
+	QOpenGLFunctions_4_1_Core *	fn;
+	//! Context
+	QOpenGLContext *	cx;
+
+	// work around core profile functions missing from QOpenGLFunctions_4_1_Core
+	void ( *vertexAttrib1f )( unsigned int index, float v );
+	void ( *vertexAttrib2fv )( unsigned int index, const float * v );
+	void ( *vertexAttrib3fv )( unsigned int index, const float * v );
+	void ( *vertexAttrib4fv )( unsigned int index, const float * v );
+
+	//! Global uniforms
+	Matrix	viewMatrix;
+	Matrix4	projectionMatrix;
+	// W = environment map rotation (-1.0 to 1.0), unused for light sources 1 and 2
+	FloatVector4	lightSourcePosition0;
+	// A = overall brightness, unused for light sources 1 and 2
+	FloatVector4	lightSourceDiffuse0;
+	// A = tone mapping control (1.0 = full tone mapping)
+	FloatVector4	lightSourceAmbient;
+	FloatVector4	lightSourcePosition1;
+	FloatVector4	lightSourceDiffuse1;
+	FloatVector4	lightSourcePosition2;
+	FloatVector4	lightSourceDiffuse2;
+
 	NifSkopeOpenGLContext( QOpenGLContext * context );
 	~NifSkopeOpenGLContext();
 
@@ -274,15 +299,32 @@ public:
 
 	void setGlobalUniforms();
 
-	// elementMode = GL_POINTS, GL_LINES, GL_TRIANGLES, etc.
-	// elementType = GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT or GL_UNSIGNED_INT
-	void drawShape( unsigned int numVerts, std::uint64_t attrMask,
-					unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+	//! Load and bind geometry data without drawing the shape
+	void bindShape( unsigned int numVerts, std::uint64_t attrMask, size_t elementDataSize,
 					const float * const * attrData, const void * elementData );
 
-	void drawShape( const ShapeDataHash & h,
-					unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
-					const float * const * attrData, const void * elementData );
+	void bindShape( const ShapeDataHash & h, const float * const * attrData, const void * elementData );
+
+	//! Bind geometry data and draw elements
+	//     elementMode = GL_POINTS, GL_LINES, GL_TRIANGLES, etc.
+	//     elementType = GL_UNSIGNED_BYTE, GL_UNSIGNED_SHORT or GL_UNSIGNED_INT
+	inline void drawShape( unsigned int numVerts, std::uint64_t attrMask,
+							unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+							const float * const * attrData, const void * elementData )
+	{
+		size_t	elementDataSize = ( elementType == GL_UNSIGNED_SHORT ? 2 : ( elementType == GL_UNSIGNED_INT ? 4 : 1 ) );
+		elementDataSize = elementDataSize * numIndices;
+		bindShape( numVerts, attrMask, elementDataSize, attrData, elementData );
+		fn->glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
+	}
+
+	inline void drawShape( const ShapeDataHash & h,
+							unsigned int numIndices, unsigned int elementMode, unsigned int elementType,
+							const float * const * attrData, const void * elementData )
+	{
+		bindShape( h, attrData, elementData );
+		fn->glDrawElements( GLenum( elementMode ), GLsizei( numIndices ), GLenum( elementType ), (void *) 0 );
+	}
 
 	void setCacheSize( size_t maxBytes );
 	void shrinkCache( bool deleteAll = false );
@@ -290,30 +332,6 @@ public:
 	{
 		shrinkCache( true );
 	}
-
-	//! Context Functions
-	QOpenGLFunctions_4_1_Core *	fn;
-	//! Context
-	QOpenGLContext *	cx;
-
-	// work around core profile functions missing from QOpenGLFunctions_4_1_Core
-	void ( *vertexAttrib1f )( unsigned int index, float v );
-	void ( *vertexAttrib2fv )( unsigned int index, const float * v );
-	void ( *vertexAttrib3fv )( unsigned int index, const float * v );
-	void ( *vertexAttrib4fv )( unsigned int index, const float * v );
-
-	Matrix	viewMatrix;
-	Matrix4	projectionMatrix;
-	// W = environment map rotation (-1.0 to 1.0), unused for light sources 1 and 2
-	FloatVector4	lightSourcePosition0;
-	// A = overall brightness, unused for light sources 1 and 2
-	FloatVector4	lightSourceDiffuse0;
-	// A = tone mapping control (1.0 = full tone mapping)
-	FloatVector4	lightSourceAmbient;
-	FloatVector4	lightSourcePosition1;
-	FloatVector4	lightSourceDiffuse1;
-	FloatVector4	lightSourcePosition2;
-	FloatVector4	lightSourceDiffuse2;
 
 protected:
 	Shader **	shadersAndPrograms = nullptr;
