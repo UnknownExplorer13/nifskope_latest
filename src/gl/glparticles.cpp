@@ -128,7 +128,7 @@ BoundSphere Particles::bounds() const
 
 void Particles::drawShapes( NodeList * secondPass )
 {
-	if ( isHidden() || Node::SELECTING )
+	if ( isHidden() || scene->selecting )
 		return;
 
 	AlphaProperty * aprop = findProperty<AlphaProperty>();
@@ -137,9 +137,6 @@ void Particles::drawShapes( NodeList * secondPass )
 		secondPass->add( this );
 		return;
 	}
-
-	// Disable texturing,  texturing properties will reenable if applicable
-	glDisable( GL_TEXTURE_2D );
 
 	// setup blending
 

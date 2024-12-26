@@ -54,6 +54,7 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 	QObject( parent )
 {
 	currentBlock = currentIndex = QModelIndex();
+	selecting = false;
 	animate = true;
 
 	time = 0.0;
@@ -402,7 +403,7 @@ void Scene::drawFurn()
 
 void Scene::drawSelection() const
 {
-	if ( Node::SELECTING )
+	if ( selecting )
 		return; // do not render the selection when selecting
 
 	for ( Node * node : nodes.list() ) {

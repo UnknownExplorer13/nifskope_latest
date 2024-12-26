@@ -272,7 +272,7 @@ void BSShape::drawShapes( NodeList * secondPass )
 	auto	context = scene->renderer;
 	GLsizei	numIndices = GLsizei( sortedTriangles.size() * 3 );
 
-	if ( !Node::SELECTING ) [[likely]] {
+	if ( !scene->selecting ) [[likely]] {
 		if ( nif->getBSVersion() >= 151 )
 			glEnable( GL_FRAMEBUFFER_SRGB );
 		else
@@ -324,7 +324,7 @@ void BSShape::drawVerts() const
 
 	qsizetype	numVerts = verts.size();
 
-	if ( Node::SELECTING ) {
+	if ( scene->selecting ) {
 		for ( qsizetype i = 0; i < numVerts; i++ ) {
 			setGLColor( getColorKeyFromID( ( shapeNumber << 16 ) + int( i ) ) );
 			context->fn->glDrawArrays( GL_POINTS, GLint( i ), 1 );
@@ -348,7 +348,7 @@ void BSShape::drawVerts() const
 
 
 	// Highlight selected vertex
-	if ( !Node::SELECTING && selected ) {
+	if ( !scene->selecting && selected ) {
 		auto idx = scene->currentIndex;
 		auto n = idx.data( NifSkopeDisplayRole ).toString();
 		if ( n == "Vertex" || n == "Vertices" ) {

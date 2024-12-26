@@ -52,7 +52,7 @@ void BSMesh::drawShapes( NodeList * secondPass )
 
 	auto	context = scene->renderer;
 
-	if ( !Node::SELECTING ) [[likely]] {
+	if ( !scene->selecting ) [[likely]] {
 		glEnable( GL_FRAMEBUFFER_SRGB );
 		shader = context->setupProgram( this, shader );
 
@@ -353,14 +353,14 @@ void BSMesh::drawVerts() const
 	glPointSize( GLView::Settings::vertexSelectPointSize );
 	glBegin( GL_POINTS );
 	for ( int i = 0; i < verts.size(); i++ ) {
-		if ( Node::SELECTING ) {
+		if ( scene->selecting ) {
 			getColorKeyFromID( ( shapeNumber << 16 ) + i );
 		}
 		glVertex( verts.value(i) );
 	}
 	glEnd();
 
-	if ( Node::SELECTING || !( scene->currentBlock == iBlock ) )
+	if ( scene->selecting || !( scene->currentBlock == iBlock ) )
 		return;
 
 	int	vertexSelected = -1;

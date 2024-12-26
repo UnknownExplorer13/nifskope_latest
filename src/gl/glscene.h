@@ -199,6 +199,7 @@ public:
 
 	Transform view;
 
+	bool selecting;
 	bool animate;
 
 	float time;

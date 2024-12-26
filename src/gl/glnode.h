@@ -96,8 +96,6 @@ class Node : public IControllable
 public:
 	Node( Scene * scene, const QModelIndex & iBlock );
 
-	static int SELECTING;
-
 	int id() const { return nodeId; }
 
 	// IControllable

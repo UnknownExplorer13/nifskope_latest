@@ -623,9 +623,9 @@ void GLView::paintGL()
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LEQUAL );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-		Node::SELECTING = 1;
+		scene->selecting = true;
 	} else {
-		Node::SELECTING = 0;
+		scene->selecting = false;
 	}
 #endif
 
@@ -852,11 +852,11 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
 	// Rasterize the scene
-	Node::SELECTING = 1;
+	scene->selecting = true;
 	for ( DrawFunc df : drawFunc ) {
 		(scene->*df)();
 	}
-	Node::SELECTING = 0;
+	scene->selecting = false;
 
 	glClearColor( savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3] );
 	glEnable( GL_DITHER );

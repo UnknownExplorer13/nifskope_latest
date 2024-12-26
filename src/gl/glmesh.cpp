@@ -750,7 +750,7 @@ void Mesh::drawShapes( NodeList * secondPass )
 
 	auto nif = NifModel::fromIndex( iBlock );
 
-	if ( Node::SELECTING ) {
+	if ( scene->selecting ) {
 		if ( scene->isSelModeObject() ) {
 			getColorKeyFromID( nodeId );
 		} else {
@@ -767,7 +767,7 @@ void Mesh::drawShapes( NodeList * secondPass )
 		glMultMatrix( viewTrans() );
 	}
 
-	//if ( !Node::SELECTING ) {
+	//if ( !scene->selecting ) {
 	//	qDebug() << viewTrans().translation;
 		//qDebug() << Vector3( nif->get<Vector4>( iBlock, "Translation" ) );
 	//}
@@ -787,7 +787,7 @@ void Mesh::drawShapes( NodeList * secondPass )
 	glEnableClientState( GL_VERTEX_ARRAY );
 	glVertexPointer( 3, GL_FLOAT, 0, verts.constData() );
 
-	if ( !Node::SELECTING ) [[likely]] {
+	if ( !scene->selecting ) [[likely]] {
 		if ( norms.size() ) {
 			glEnableClientState( GL_NORMAL_ARRAY );
 			glNormalPointer( GL_FLOAT, 0, norms.constData() );
@@ -810,7 +810,7 @@ void Mesh::drawShapes( NodeList * secondPass )
 		}
 
 		// TODO: Hotspot.  See about optimizing this.
-		if ( !Node::SELECTING )
+		if ( !scene->selecting )
 			shader = scene->renderer->setupProgram( this, shader );
 
 	} else if ( drawInSecondPass && scene->isSelModeVertex() ) {
@@ -872,7 +872,7 @@ void Mesh::drawShapes( NodeList * secondPass )
 		glEnable( GL_CULL_FACE );
 	}
 
-	if ( !Node::SELECTING )
+	if ( !scene->selecting )
 		scene->renderer->stopProgram();
 
 	glDisableClientState( GL_VERTEX_ARRAY );
@@ -897,14 +897,14 @@ void Mesh::drawVerts() const
 	glBegin( GL_POINTS );
 
 	for ( int i = 0; i < verts.size(); i++ ) {
-		if ( Node::SELECTING ) {
+		if ( scene->selecting ) {
 			getColorKeyFromID( ( shapeNumber << 16 ) + i );
 		}
 		glVertex( verts.value( i ) );
 	}
 
 	// Highlight selected vertex
-	if ( !Node::SELECTING && iData == scene->currentBlock ) {
+	if ( !scene->selecting && iData == scene->currentBlock ) {
 		auto idx = scene->currentIndex;
 		if ( idx.data( NifSkopeDisplayRole ).toString() == "Vertices" ) {
 			glHighlightColor();
