@@ -447,7 +447,6 @@ void Mesh::updateData_NiMesh( const NifModel * nif )
 
 	Q_ASSERT( verts.size() == qsizetype(maxIndex + 1) );
 	Q_ASSERT( indices.size() == qsizetype(totalIndices) );
-	numVerts = verts.size();
 
 	// Make geometry
 	triangles.resize( indices.size() / 3 );
@@ -502,7 +501,7 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 
 	// Fill vertex data
 	verts = nif->getArray<Vector3>( iData, "Vertices" );
-	numVerts = verts.size();
+	qsizetype numVerts = verts.size();
 
 	norms = nif->getArray<Vector3>( iData, "Normals" );
 	if ( norms.size() < numVerts )

@@ -5,12 +5,15 @@ out vec4 C;
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
 
+uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
+
 uniform int numBones;
 uniform mat4x3 boneTransforms[100];
 
 layout ( location = 0 ) in vec3	vertexPosition;
-layout ( location = 6 ) in vec4	boneWeights0;
-layout ( location = 7 ) in vec4	boneWeights1;
+layout ( location = 1 ) in vec4	vertexColor;
+layout ( location = 5 ) in vec4	boneWeights0;
+layout ( location = 6 ) in vec4	boneWeights1;
 
 void main( void )
 {
@@ -41,4 +44,6 @@ void main( void )
 
 	v = modelViewMatrix * v;
 	gl_Position = projectionMatrix * v;
+
+	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
 }

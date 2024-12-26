@@ -50,6 +50,8 @@ void Shape::clear()
 {
 	Node::clear();
 
+	clearHash();
+
 	resetSkinning();
 	resetVertexData();
 	resetSkeletonData();
@@ -63,8 +65,6 @@ void Shape::clear()
 
 	isLOD = false;
 	isDoubleSided = false;
-
-	clearHash();
 }
 
 void Shape::transform()
@@ -74,6 +74,7 @@ void Shape::transform()
 
 		auto nif = NifModel::fromValidIndex( iBlock );
 		if ( nif ) {
+			clearHash();
 			needUpdateBounds = true; // Force update bounds
 			updateData(nif);
 		} else {
@@ -126,10 +127,11 @@ void Shape::updateBoneTransforms()
 		bt[11] = t.translation[2];
 	}
 
+	qsizetype	numVerts = verts.size();
 	transVerts.resize( numVerts );
 	transVerts.fill( Vector3() );
 
-	for ( int i = 0; i < numVerts; i++ ) {
+	for ( qsizetype i = 0; i < numVerts; i++ ) {
 		FloatVector4	v = FloatVector4::convertVector3( &( verts.at( i )[0] ) );
 		v[3] = 1.0f;
 		const float *	wp = &( boneWeights0.at( i )[0] );
@@ -182,7 +184,6 @@ void Shape::updateImpl( const NifModel * nif, const QModelIndex & index )
 	Node::updateImpl( nif, index );
 
 	if ( index == iBlock ) {
-		clearHash();
 		shader = nullptr;	// Reset stored shader so it can reassess conditions
 
 		bslsp = nullptr;
@@ -237,8 +238,6 @@ void Shape::resetSkinning()
 
 void Shape::resetVertexData()
 {
-	numVerts = 0;
-
 	iData = iTangentData = QModelIndex();
 
 	verts.clear();
@@ -247,7 +246,6 @@ void Shape::resetVertexData()
 	tangents.clear();
 	bitangents.clear();
 	coords.clear();
-	coords2.clear();
 	triangles.clear();
 	tristrips.clear();
 }
@@ -341,123 +339,75 @@ void Shape::setUniforms( NifSkopeOpenGLContext::Program * prog ) const
 	prog->uni4m( "modelViewMatrix", m->toMatrix4() );
 }
 
-void Shape::drawShape( std::uint16_t attrMask, FloatVector4 color ) const
+bool Shape::bindShape() const
 {
 	NifSkopeOpenGLContext *	context = scene->renderer;
 	if ( !context ) [[unlikely]]
-		return;
+		return false;
 
 	qsizetype	numVerts = verts.size();
 	qsizetype	numTriangles = sortedTriangles.size();
 	if ( !( numVerts > 0 && numTriangles > 0 ) ) [[unlikely]]
-		return;
+		return false;
 
+	static const float	defaultAttrs[12] = { 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f };
+	static const float *	defaultAttrPtrs[16] = {
+		// position, color, normal, tangent
+		&( defaultAttrs[4] ), &( defaultAttrs[0] ), &( defaultAttrs[6] ), &( defaultAttrs[9] ),
+		// bitangent, weights0, weights1, coord0
+		&( defaultAttrs[3] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ),
+		// coord1..coord8
+		&( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ),
+		&( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] )
+	};
 	const float *	vertexAttrs[16];
-	FloatVector4	defaultPos( 0.0f );
-	FloatVector4	defaultColor( color );
-	FloatVector4	defaultNormal( 0.0f, 0.0f, 1.0f, 0.0f );
-	FloatVector4	defaultTangent( 0.0f, -1.0f, 0.0f, 0.0f );
-	FloatVector4	defaultBitangent( 1.0f, 0.0f, 0.0f, 0.0f );
-	std::uint64_t	attrModeMask = 0U;
+	std::memcpy( vertexAttrs, defaultAttrPtrs, sizeof( float * ) * 16 );
+	std::uint64_t	attrModeMask = 0xAAAAAAAAACCBBBC3ULL;
 
-	if ( attrMask & 0x0001 ) [[likely]] {
-		vertexAttrs[0] = &( verts.constFirst()[0] );
-		attrModeMask = 3U;
+	vertexAttrs[0] = &( verts.constFirst()[0] );
+
+	if ( colors.size() >= numVerts ) {
+		vertexAttrs[1] = &( colors.constFirst()[0] );
+		attrModeMask &= ~0x00000080ULL;
 	}
 
-	if ( attrMask & 0x0002 ) [[likely]] {
-		if ( coords2.size() >= numVerts ) {
-			vertexAttrs[1] = &( coords2.constFirst()[0] );
-			attrModeMask = attrModeMask | 0x00000040U;
-		} else if ( coords.size() >= 1 && coords.constFirst().size() >= numVerts ) {
-			vertexAttrs[1] = &( coords.constFirst().constFirst()[0] );
-			attrModeMask = attrModeMask | 0x00000020U;
-		} else {
-			vertexAttrs[1] = &( defaultPos[0] );
-			attrModeMask = attrModeMask | 0x000000C0U;
+	if ( norms.size() >= numVerts ) [[likely]] {
+		vertexAttrs[2] = &( norms.constFirst()[0] );
+		attrModeMask &= ~0x00000800ULL;
+	}
+	if ( tangents.size() >= numVerts ) [[likely]] {
+		vertexAttrs[3] = &( tangents.constFirst()[0] );
+		attrModeMask &= ~0x00008000ULL;
+	}
+	if ( bitangents.size() >= numVerts ) [[likely]] {
+		vertexAttrs[4] = &( bitangents.constFirst()[0] );
+		attrModeMask &= ~0x00080000ULL;
+	}
+
+	if ( boneWeights0.size() >= numVerts ) [[unlikely]] {
+		vertexAttrs[5] = &( boneWeights0.constFirst()[0] );
+		attrModeMask &= ~0x00800000ULL;
+	}
+	if ( boneWeights1.size() >= numVerts ) [[unlikely]] {
+		vertexAttrs[6] = &( boneWeights1.constFirst()[0] );
+		attrModeMask &= ~0x08000000ULL;
+	}
+
+	unsigned char	numUVs = (unsigned char) std::min< qsizetype >( coords.size(), 9 );
+	for ( unsigned char i = 0; i < numUVs; i++ ) {
+		if ( coords[i].size() >= numVerts ) [[likely]] {
+			vertexAttrs[i + 7] = &( coords.at( i ).constFirst()[0] );
+			attrModeMask &= ~( 0x80000000ULL << ( i << 2 ) );
 		}
 	}
 
-	if ( ( attrMask & 0x0004 ) && colors.size() >= numVerts && scene->hasOption(Scene::DoVertexColors) ) {
-		vertexAttrs[2] = &( colors.constFirst()[0] );
-		attrModeMask = attrModeMask | 0x00000400U;
-	} else {
-		vertexAttrs[2] = &( defaultColor[0] );
-		attrModeMask = attrModeMask | 0x00000C00U;
+	size_t	elementDataSize = size_t( numTriangles ) * sizeof( Triangle );
+	if ( !( dataHash.attrMask && numVerts == dataHash.numVerts && elementDataSize == dataHash.elementBytes ) ) {
+		dataHash = NifSkopeOpenGLContext::ShapeDataHash( std::uint32_t( numVerts ), attrModeMask, elementDataSize,
+															vertexAttrs, sortedTriangles.constData() );
 	}
 
-	if ( attrMask & 0x0008 ) [[likely]] {
-		if ( norms.size() < numVerts ) [[unlikely]] {
-			vertexAttrs[3] = &( defaultNormal[0] );
-			attrModeMask = attrModeMask | 0x0000B000U;
-		} else {
-			vertexAttrs[3] = &( norms.constFirst()[0] );
-			attrModeMask = attrModeMask | 0x00003000U;
-		}
-	}
+	context->bindShape( dataHash, vertexAttrs, sortedTriangles.constData() );
 
-	if ( attrMask & 0x0010 ) [[likely]] {
-		if ( tangents.size() < numVerts ) [[unlikely]] {
-			vertexAttrs[4] = &( defaultTangent[0] );
-			attrModeMask = attrModeMask | 0x000B0000U;
-		} else {
-			vertexAttrs[4] = &( tangents.constFirst()[0] );
-			attrModeMask = attrModeMask | 0x00030000U;
-		}
-	}
-
-	if ( attrMask & 0x0020 ) [[likely]] {
-		if ( bitangents.size() < numVerts ) [[unlikely]] {
-			vertexAttrs[5] = &( defaultBitangent[0] );
-			attrModeMask = attrModeMask | 0x00B00000U;
-		} else {
-			vertexAttrs[5] = &( bitangents.constFirst()[0] );
-			attrModeMask = attrModeMask | 0x00300000U;
-		}
-	}
-
-	if ( ( attrMask & 0x00C0 ) && !transformRigid ) [[unlikely]] {
-		if ( attrMask & 0x0040 ) {
-			if ( boneWeights0.size() < numVerts ) {
-				vertexAttrs[6] = &( defaultPos[0] );
-				attrModeMask = attrModeMask | 0x0C000000U;
-			} else {
-				vertexAttrs[6] = &( boneWeights0.constFirst()[0] );
-				attrModeMask = attrModeMask | 0x04000000U;
-			}
-		}
-		if ( attrMask & 0x0080 ) {
-			if ( boneWeights1.size() < numVerts ) {
-				vertexAttrs[7] = &( defaultPos[0] );
-				attrModeMask = attrModeMask | 0xC0000000U;
-			} else {
-				vertexAttrs[7] = &( boneWeights1.constFirst()[0] );
-				attrModeMask = attrModeMask | 0x40000000U;
-			}
-		}
-	}
-
-	if ( attrMask & 0xFF00 ) [[unlikely]] {
-		for ( unsigned char i = 8; i < 16; i++ ) {
-			if ( attrMask & ( 1U << i ) ) {
-				qsizetype	j = i - 8;
-				if ( coords.size() > j && coords.at( j ).size() >= numVerts ) {
-					vertexAttrs[i] = &( coords.at( j ).constFirst()[0] );
-					attrModeMask = attrModeMask | ( 2ULL << ( i << 2 ) );
-				} else {
-					vertexAttrs[i] = &( defaultPos[0] );
-					attrModeMask = attrModeMask | ( 10ULL << ( i << 2 ) );
-				}
-			}
-		}
-	}
-
-	if ( !dataHash.attrMask ) {
-		dataHash = NifSkopeOpenGLContext::ShapeDataHash(
-						std::uint32_t( numVerts ), attrModeMask, size_t( numTriangles ) * sizeof( Triangle ),
-						vertexAttrs, sortedTriangles.constData() );
-	}
-
-	context->drawShape( dataHash, (unsigned int) ( numTriangles * 3 ),
-						GL_TRIANGLES, GL_UNSIGNED_SHORT, vertexAttrs, sortedTriangles.constData() );
+	return true;
 }

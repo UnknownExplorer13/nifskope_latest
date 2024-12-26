@@ -150,10 +150,24 @@ protected:
 	void setController( const NifModel * nif, const QModelIndex & controller ) override;
 	void updateImpl( const NifModel * nif, const QModelIndex & block ) override;
 
+	void setGLColor( FloatVector4 c ) const;
+	inline void setGLColor( const QColor & c ) const
+	{
+		setGLColor( FloatVector4( Color4(c) ) );
+	}
+
 	// Old Options API
 	//	TODO: Move away from the GL-like naming
 	void glHighlightColor() const;
 	void glNormalColor() const;
+
+	void drawVertexSelection( QVector<Vector3> & verts, int i );
+	void drawTriangleSelection( QVector<Vector3> const & verts, Triangle const & tri );
+	void drawTriangleIndex( QVector<Vector3> const & verts, Triangle const & tri, int index );
+	void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
+						const Scene * scene, const float origin_color3fv[3] );
+	void drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, const Scene * scene );
+	void drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosition );
 
 	QPointer<Node> parent;
 	NodeList children;

@@ -66,18 +66,7 @@ public:
 	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); };
 
 	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
-	// attrMask & (1 << N) = enable vertex attribute N:
-	//     0: positions (vec3)
-	//     1: UVs (UV1 as vec2, or packed UV1 and UV2 as vec4)
-	//     2: colors (vec4)
-	//     3: normals (vec3)
-	//     4: tangents (vec3)
-	//     5: bitangents (vec3)
-	//     6: bone weights 0 to 3 (vec4), each element is bone index + weight * 65535.0/65536.0
-	//     7: bone weights 4 to 7 (vec4)
-	// 8..15: UV sets 0 to 7 (vec2)
-	// color = default color to use if vertex color data is not available or disabled
-	void drawShape( std::uint16_t attrMask, FloatVector4 color = FloatVector4( 1.0f ) ) const;
+	bool bindShape() const;
 
 protected:
 	int shapeNumber;
@@ -104,8 +93,6 @@ protected:
 
 	void resetSkinning();
 
-	int numVerts = 0;
-
 	//! Vertices
 	QVector<Vector3> verts;
 	//! Normals
@@ -118,8 +105,6 @@ protected:
 	QVector<Vector3> bitangents;
 	//! UV coordinate sets
 	QVector<TexCoords> coords;
-	//! UV coordinate sets (packed UV1 and UV2)
-	QVector<Vector4> coords2;
 	//! Triangles
 	QVector<Triangle> triangles;
 	//! Strip points

@@ -43,14 +43,18 @@ uniform float envReflection;
 in vec3 LightDir;
 in vec3 ViewDir;
 
+in vec2 texCoord;
+
 in vec4 A;
 in vec4 C;
 in vec4 D;
 
-in mat3 tbnMatrix;
+in mat3 btnMatrix;
 in mat3 reflMatrix;
 
-mat3 tbnMatrix_norm = mat3(normalize(tbnMatrix[0]), normalize(tbnMatrix[1]), normalize(tbnMatrix[2]));
+out vec4 fragColor;
+
+mat3 btnMatrix_norm = mat3(normalize(btnMatrix[0]), normalize(btnMatrix[1]), normalize(btnMatrix[2]));
 
 
 vec3 tonemap(vec3 x, float y)
@@ -74,13 +78,13 @@ vec3 toGrayscale(vec3 color)
 
 void main( void )
 {
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
+	vec2 offset = texCoord.st * uvScale + uvOffset;
 
 	vec3 E = normalize(ViewDir);
 	
 	if ( hasHeightMap ) {
 		float height = texture( HeightMap, offset ).r;
-		offset += normalize(ViewDir * tbnMatrix_norm).xy * (height * 0.08 - 0.04); 
+		offset += normalize(ViewDir * btnMatrix_norm).xy * (height * 0.08 - 0.04); 
 	}
 
 	vec4 baseMap = texture( BaseMap, offset );
@@ -99,7 +103,7 @@ void main( void )
 	vec4 normalMap = texture( NormalMap, offset );
 	vec4 glowMap = texture( GlowMap, offset );
 	
-	vec3 normal = normalize(tbnMatrix_norm * (normalMap.rgb * 2.0 - 1.0));
+	vec3 normal = normalize(btnMatrix_norm * (normalMap.rgb * 2.0 - 1.0));
 	if ( !gl_FrontFacing )
 		normal *= -1.0;
 
@@ -188,5 +192,5 @@ void main( void )
 	color.rgb = albedo * (diffuse + emissive) + spec;
 	color.rgb = tonemap( color.rgb * D.a, A.a );
 
-	gl_FragColor = color;
+	fragColor = color;
 }

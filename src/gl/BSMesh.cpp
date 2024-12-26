@@ -41,17 +41,20 @@ void BSMesh::drawShapes( NodeList * secondPass )
 		updateData(nif);
 	}
 
+	if ( !bindShape() )
+		return;
+
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	if ( drawInSecondPass )
 		glPolygonOffset( 0.5f, 1.0f );
 	else
 		glPolygonOffset( 1.0f, 2.0f );
 
+	auto	context = scene->renderer;
+
 	if ( !Node::SELECTING ) [[likely]] {
 		glEnable( GL_FRAMEBUFFER_SRGB );
-		shader = scene->renderer->setupProgram( this, shader );
-
-		drawShape( 0x003F );
+		shader = context->setupProgram( this, shader );
 
 	} else {
 		glDisable( GL_FRAMEBUFFER_SRGB );
@@ -61,14 +64,15 @@ void BSMesh::drawShapes( NodeList * secondPass )
 			c = getColorKeyFromID( nodeId );
 
 		if ( !( drawInSecondPass && scene->isSelModeVertex() ) ) {
-			NifSkopeOpenGLContext::Program *	prog = scene->renderer->useProgram( "selection.prog" );
+			auto	prog = context->useProgram( "selection.prog" );
 			setUniforms( prog );
-			if ( prog )
-				prog->uni4f( "C", c );
-			drawShape( 0x0001 );
+			setGLColor( c );
 		}
 	}
-	scene->renderer->stopProgram();
+
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
+
+	context->stopProgram();
 	glDisable( GL_POLYGON_OFFSET_FILL );
 
 	if ( scene->isSelModeVertex() )
@@ -85,8 +89,13 @@ void BSMesh::drawSelection() const
 	if ( isHidden() || !( scene->isSelModeObject() && blk == iBlock ) )
 		return;
 
-	auto& idx = scene->currentIndex;
-	auto nif = NifModel::fromValidIndex(blk);
+	auto &	idx = scene->currentIndex;
+	auto	nif = NifModel::fromValidIndex(blk);
+	auto	context = scene->renderer;
+	NifSkopeOpenGLContext::Program *	prog;
+	if ( !( nif && context && bindShape() && ( prog = context->useProgram( "selection.prog" ) ) != nullptr ) )
+		return;
+	auto	f = context->fn;
 
 	glEnable(GL_DEPTH_TEST);
 	glDepthMask(GL_FALSE);
@@ -101,9 +110,6 @@ void BSMesh::drawSelection() const
 	glEnable(GL_POLYGON_OFFSET_FILL);
 	glPolygonOffset(-1.0f, -2.0f);
 
-	NifSkopeOpenGLContext::Program *	prog;
-	if ( !( scene->renderer && ( prog = scene->renderer->useProgram( "selection.prog" ) ) != nullptr ) )
-		return;
 	setUniforms( prog );
 
 	glPointSize( GLView::Settings::vertexPointSize );
@@ -116,6 +122,7 @@ void BSMesh::drawSelection() const
 	auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
 
 	float	normalScale = std::max< float >( boundSphere.radius / 20.0f, 1.0f / 512.0f );
+	qsizetype	numTriangles = sortedTriangles.size();
 
 	// Draw All Verts lambda
 	auto allv = [this]( float size ) {
@@ -184,7 +191,8 @@ void BSMesh::drawSelection() const
 			drawBox( boundsCenter - boundsDims, boundsCenter + boundsDims );
 		}
 	} else if ( n == "Vertices" || n == "UVs" || n == "UVs 2" || n == "Vertex Colors" || n == "Weights" ) {
-		allv( GLView::Settings::vertexPointSize );
+		f->glPointSize( GLView::Settings::vertexPointSize );
+		f->glDrawArrays( GL_POINTS, 0, GLsizei( verts.size() ) );
 
 		int	s;
 		if ( n == p && ( s = idx.row() ) >= 0 ) {
@@ -247,11 +255,11 @@ void BSMesh::drawSelection() const
 		QModelIndex	iMeshlets;
 		if ( s < 0 && n == "Meshlets" && ( iMeshlets = nif->getIndex( idx.parent(), "Meshlets" ) ).isValid() ) {
 			// draw all meshlets
-			quint32	triangleOffset = 0;
-			quint32	triangleCount = 0;
+			qsizetype	triangleOffset = 0;
+			qsizetype	triangleCount = 0;
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			int	numMeshlets = nif->rowCount( iMeshlets );
-			for ( int i = 0; i < numMeshlets && triangleOffset < quint32(sortedTriangles.size()); i++ ) {
+			for ( int i = 0; i < numMeshlets && triangleOffset < numTriangles; i++ ) {
 				triangleCount = nif->get<quint32>( nif->getIndex( iMeshlets, i ), "Triangle Count" );
 				std::uint32_t	j = std::uint32_t(i);
 				j = ( ( j & 0x0001U ) << 7 ) | ( ( j & 0x0008U ) << 3 ) | ( ( j & 0x0040U ) >> 1 )
@@ -263,55 +271,46 @@ void BSMesh::drawSelection() const
 				j = ~j;
 				FloatVector4	meshletColor( j );
 				meshletColor /= 255.0f;
-				glColor4f( meshletColor[0], meshletColor[1], meshletColor[2], meshletColor[3] );
-				glBegin( GL_TRIANGLES );
-				for ( ; triangleCount && triangleOffset < quint32(sortedTriangles.size()); triangleCount-- ) {
-					Triangle tri = sortedTriangles.value( qsizetype(triangleOffset) );
-					glVertex( verts.value(tri.v1()) );
-					glVertex( verts.value(tri.v2()) );
-					glVertex( verts.value(tri.v3()) );
-					triangleOffset++;
+				setGLColor( meshletColor );
+				triangleCount = std::min< qsizetype >( triangleCount, numTriangles - triangleOffset );
+				if ( triangleCount > 0 ) {
+					f->glDrawElements( GL_TRIANGLES, GLsizei( triangleCount * 3 ), GL_UNSIGNED_SHORT,
+										(void *) ( triangleOffset * 6 ) );
+					triangleOffset += triangleCount;
 				}
-				glEnd();
 			}
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 			Color4	wireframeColor( cfg.wireframe );
-			glColor4f( wireframeColor[0], wireframeColor[1], wireframeColor[2], 0.125f );
+			wireframeColor[3] = 0.125f;
+			setGLColor( FloatVector4( wireframeColor ) );
 			glDepthFunc( GL_LEQUAL );
 		}
 
 		// General wireframe
-		drawShape( 0x0001 );
+		f->glDrawElements( GL_TRIANGLES, GLsizei( numTriangles * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 
 		if ( s >= 0 && ( n == "Triangles" || n == "Meshlets" ) ) {
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			glHighlightColor();
 			glDepthFunc( GL_ALWAYS );
 
-			glBegin( GL_TRIANGLES );
 			if ( n == "Triangles" ) {
 				// draw selected triangle
-				Triangle tri = sortedTriangles.value( s );
-				glVertex( verts.value(tri.v1()) );
-				glVertex( verts.value(tri.v2()) );
-				glVertex( verts.value(tri.v3()) );
+				f->glDrawElements( GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, (void *) ( qsizetype( s ) * 6 ) );
 			} else if ( ( iMeshlets = nif->getIndex( idx.parent().parent(), "Meshlets" ) ).isValid() ) {
 				// draw selected meshlet
-				quint32	triangleOffset = 0;
-				quint32	triangleCount = 0;
+				qsizetype	triangleOffset = 0;
+				qsizetype	triangleCount = 0;
 				for ( int i = 0; i <= s; i++ ) {
 					triangleOffset += triangleCount;
 					triangleCount = nif->get<quint32>( nif->getIndex( iMeshlets, i ), "Triangle Count" );
 				}
-				for ( ; triangleCount && triangleOffset < quint32(sortedTriangles.size()); triangleCount-- ) {
-					Triangle tri = sortedTriangles.value( qsizetype(triangleOffset) );
-					glVertex( verts.value(tri.v1()) );
-					glVertex( verts.value(tri.v2()) );
-					glVertex( verts.value(tri.v3()) );
-					triangleOffset++;
+				if ( triangleOffset < numTriangles && triangleCount > 0 ) {
+					triangleCount = std::min< qsizetype >( triangleCount, numTriangles - triangleOffset );
+					f->glDrawElements( GL_TRIANGLES, GLsizei( triangleCount * 3 ), GL_UNSIGNED_SHORT,
+										(void *) ( triangleOffset * 6 ) );
 				}
 			}
-			glEnd();
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		}
 	}
@@ -507,8 +506,10 @@ void BSMesh::updateData(const NifModel* nif)
 			sortedTriangles = mesh->triangles;
 		}
 		verts = mesh->positions;
-		coords2 = mesh->coords;
-		coords.resize( mesh->haveTexCoord2 ? 2 : 1 );
+		coords.resize( mesh->coords2.isEmpty() ? 1 : 2 );
+		coords.first() = mesh->coords1;
+		if ( !mesh->coords2.isEmpty() )
+			coords[1] = mesh->coords2;
 		colors = mesh->colors;
 		hasVertexColors = !colors.empty();
 		norms = mesh->normals;

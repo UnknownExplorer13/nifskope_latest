@@ -21,12 +21,15 @@ uniform vec4 lightSourcePosition0;	// W = environment map rotation (-1.0 to 1.0)
 uniform vec4 lightSourceDiffuse0;	// A = overall brightness
 uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone mapping)
 
+uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
+
 layout ( location = 0 ) in vec3 vertexPosition;
-layout ( location = 1 ) in vec4 multiTexCoord0;
-layout ( location = 2 ) in vec4 vertexColor;
-layout ( location = 3 ) in vec3 normalVector;
-layout ( location = 4 ) in vec3 tangentVector;
-layout ( location = 5 ) in vec3 bitangentVector;
+layout ( location = 1 ) in vec4 vertexColor;
+layout ( location = 2 ) in vec3 normalVector;
+layout ( location = 3 ) in vec3 tangentVector;
+layout ( location = 4 ) in vec3 bitangentVector;
+layout ( location = 7 ) in vec2 multiTexCoord0;
+layout ( location = 8 ) in vec2 multiTexCoord1;
 
 mat3 rotateEnv( mat3 m, float rz )
 {
@@ -41,7 +44,7 @@ void main( void )
 {
 	vec4 v = modelViewMatrix * vec4( vertexPosition, 1.0 );
 	gl_Position = projectionMatrix * v;
-	texCoord = multiTexCoord0;
+	texCoord = vec4( multiTexCoord0, multiTexCoord1 );
 
 	btnMatrix[2] = normalize( normalVector * normalMatrix );
 	btnMatrix[1] = normalize( tangentVector * normalMatrix );
@@ -56,6 +59,6 @@ void main( void )
 	LightDir = lightSourcePosition0.xyz;
 
 	A = lightSourceAmbient;
-	C = vertexColor;
+	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
 	D = lightSourceDiffuse0;
 }

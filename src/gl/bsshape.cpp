@@ -52,7 +52,7 @@ void BSShape::updateData( const NifModel * nif )
 
 	// Fill vertex data
 	resetVertexData();
-	numVerts = 0;
+	int numVerts = 0;
 	if ( isSkinned && iSkinPart.isValid() ) {
 		// For skinned geometry, the vertex data is stored in the NiSkinPartition
 		// The triangles are split up among the partitions
@@ -106,7 +106,7 @@ void BSShape::updateData( const NifModel * nif )
 	// Add coords as the first set of QList
 	coords.append( coordset );
 
-	numVerts = verts.size();
+	numVerts = int( verts.size() );
 
 	// Fill triangle data
 	if ( isSkinned && iSkinPart.isValid() ) {
@@ -259,6 +259,9 @@ void BSShape::drawShapes( NodeList * secondPass )
 
 	auto nif = NifModel::fromIndex( iBlock );
 
+	if ( !bindShape() )
+		return;
+
 	// Render polygon fill slightly behind alpha transparency and wireframe
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	if ( drawInSecondPass )
@@ -266,29 +269,15 @@ void BSShape::drawShapes( NodeList * secondPass )
 	else
 		glPolygonOffset( 1.0f, 2.0f );
 
-	FloatVector4	c( 0.0f, 0.0f, 0.0f, 1.0f );
-	std::uint16_t	attrMask = 0x00FB;
+	auto	context = scene->renderer;
+	GLsizei	numIndices = GLsizei( sortedTriangles.size() * 3 );
 
 	if ( !Node::SELECTING ) [[likely]] {
-		c = FloatVector4( 1.0f );
-		bool doVCs = ( hasVertexColors && scene->hasOption(Scene::DoVertexColors) && !colors.isEmpty() );
-		// Always do vertex colors for FO4 if colors present
-		if ( nif->getBSVersion() < 130 && !( bssp && bssp->hasSF2(ShaderFlags::SLSF2_Vertex_Colors) ) )
-			doVCs = false;
-
-		if ( doVCs ) {
-			attrMask = 0x00FF;
-		} else if ( nif->getBSVersion() < 130 && !hasVertexColors && (bslsp && bslsp->hasVertexColors) ) {
-			// Correctly blacken the mesh if SLSF2_Vertex_Colors is still on
-			//	yet "Has Vertex Colors" is not.
-			c = FloatVector4( 0.0f, 0.0f, 0.0f, 1.0f );
-		}
-
 		if ( nif->getBSVersion() >= 151 )
 			glEnable( GL_FRAMEBUFFER_SRGB );
 		else
 			glDisable( GL_FRAMEBUFFER_SRGB );
-		shader = scene->renderer->setupProgram( this, shader );
+		shader = context->setupProgram( this, shader );
 
 	} else {
 		if ( nif->getBSVersion() >= 151 )
@@ -302,14 +291,17 @@ void BSShape::drawShapes( NodeList * secondPass )
 			return;
 		}
 
+		context->useProgram( "selection.prog" );
+
+		FloatVector4	c( 0.0f, 0.0f, 0.0f, 1.0f );
 		if ( scene->isSelModeObject() )
 			c = getColorKeyFromID( nodeId );
-		attrMask = 0x00C1;
+		setGLColor( c );
 	}
 
-	drawShape( attrMask, c );
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( numIndices ), GL_UNSIGNED_SHORT, (void *) 0 );
 
-	scene->renderer->stopProgram();
+	context->stopProgram();
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
 
@@ -319,17 +311,26 @@ void BSShape::drawShapes( NodeList * secondPass )
 
 void BSShape::drawVerts() const
 {
-	glDisable( GL_LIGHTING );
+	auto	context = scene->renderer;
+	if ( !context )
+		return;
+	auto	prog = context->useProgram( "selection.prog" );
+	if ( !prog )
+		return;
+	setUniforms( prog );
+
 	glPointSize( GLView::Settings::vertexSelectPointSize );
 	glNormalColor();
 
-	glBegin( GL_POINTS );
+	qsizetype	numVerts = verts.size();
 
-	for ( int i = 0; i < numVerts; i++ ) {
-		if ( Node::SELECTING ) {
-			getColorKeyFromID( ( shapeNumber << 16 ) + i );
+	if ( Node::SELECTING ) {
+		for ( qsizetype i = 0; i < numVerts; i++ ) {
+			setGLColor( getColorKeyFromID( ( shapeNumber << 16 ) + int( i ) ) );
+			context->fn->glDrawArrays( GL_POINTS, GLint( i ), 1 );
 		}
-		glVertex( verts.value( i ) );
+	} else {
+		context->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
 	}
 
 	auto nif = NifModel::fromIndex( iBlock );
@@ -352,11 +353,9 @@ void BSShape::drawVerts() const
 		auto n = idx.data( NifSkopeDisplayRole ).toString();
 		if ( n == "Vertex" || n == "Vertices" ) {
 			glHighlightColor();
-			glVertex( verts.value( idx.parent().row() ) );
+			context->fn->glDrawArrays( GL_POINTS, GLint( idx.parent().row() ), 1 );
 		}
 	}
-
-	glEnd();
 }
 
 void BSShape::drawSelection() const

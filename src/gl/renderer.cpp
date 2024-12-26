@@ -570,6 +570,7 @@ bool Renderer::setupProgramCE2( const NifModel * nif, Program * prog, Shape * me
 	prog->uniSampler_l( prog->uniLocation("textureUnits"), 2, texunit - 2, TexCache::num_texture_units - 2 );
 
 	mesh->setUniforms( prog );
+	prog->uni4f( "vertexColorOverride", FloatVector4( scene->hasOption(Scene::DoVertexColors) ? 0.0f : 1.0f ) );
 
 	// setup alpha blending and testing
 
@@ -878,10 +879,32 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 	}
 
 	mesh->setUniforms( prog );
+	{
+		FloatVector4	c( 0.0f );
 
-	// TODO (Gavrant): suspicious code. Should the check be replaced with !bsprop->hasVertexAlpha ?
-	prog->uni1b( "noVertexAlpha", ( mesh->isVertexAlphaAnimation
-									|| ( nifVersion < 130 && lsp && !lsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) ) ) );
+		bool	doVCs = ( mesh->hasVertexColors && scene->hasOption(Scene::DoVertexColors) && !mesh->colors.isEmpty() );
+		// Always do vertex colors for FO4 if colors present
+		if ( nifVersion < 130 && !bsprop->hasSF2(ShaderFlags::SLSF2_Vertex_Colors) )
+			doVCs = false;
+
+		if ( !doVCs ) {
+			if ( nifVersion < 130 && !mesh->hasVertexColors && lsp && lsp->hasVertexColors ) {
+				// Correctly blacken the mesh if SLSF2_Vertex_Colors is still on
+				//	yet "Has Vertex Colors" is not.
+				c = FloatVector4( 0.00000001f, 0.00000001f, 0.00000001f, 1.0f );
+			} else {
+				c = FloatVector4( 1.0f );
+			}
+		}
+
+		// TODO (Gavrant): suspicious code. Should the check be replaced with !bsprop->hasVertexAlpha ?
+		if ( mesh->isVertexAlphaAnimation
+			|| ( nifVersion < 130 && lsp && !lsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) ) ) {
+			c[3] = 1.0f;
+		}
+
+		prog->uni4f( "vertexColorOverride", c );
+	}
 
 	if ( mesh->isDoubleSided ) {
 		glDisable( GL_CULL_FACE );

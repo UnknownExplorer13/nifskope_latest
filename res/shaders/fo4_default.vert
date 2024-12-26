@@ -21,19 +21,19 @@ uniform vec4 lightSourcePosition0;	// W = environment map rotation (-1.0 to 1.0)
 uniform vec4 lightSourceDiffuse0;	// A = overall brightness
 uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone mapping)
 
-uniform bool noVertexAlpha;
+uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
 
 uniform int numBones;
 uniform mat4x3 boneTransforms[100];
 
 layout ( location = 0 ) in vec3	vertexPosition;
-layout ( location = 1 ) in vec2	multiTexCoord0;
-layout ( location = 2 ) in vec4	vertexColor;
-layout ( location = 3 ) in vec3	normalVector;
-layout ( location = 4 ) in vec3	tangentVector;
-layout ( location = 5 ) in vec3	bitangentVector;
-layout ( location = 6 ) in vec4	boneWeights0;
-layout ( location = 7 ) in vec4	boneWeights1;
+layout ( location = 1 ) in vec4	vertexColor;
+layout ( location = 2 ) in vec3	normalVector;
+layout ( location = 3 ) in vec3	tangentVector;
+layout ( location = 4 ) in vec3	bitangentVector;
+layout ( location = 5 ) in vec4	boneWeights0;
+layout ( location = 6 ) in vec4	boneWeights1;
+layout ( location = 7 ) in vec2	multiTexCoord0;
 
 void main( void )
 {
@@ -95,6 +95,6 @@ void main( void )
 	LightDir = lightSourcePosition0.xyz;
 
 	A = vec4( sqrt(lightSourceAmbient.rgb) * 0.375, lightSourceAmbient.a );
-	C = vec4( vertexColor.rgb, ( !noVertexAlpha ? vertexColor.a : 1.0 ) );
+	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
 	D = sqrt( lightSourceDiffuse0 );
 }

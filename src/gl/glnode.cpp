@@ -54,9 +54,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 int Node::SELECTING = 0;
 
-static QColor highlightColor;
-static QColor wireframeColor;
-
 /*
  *  Node list
  */
@@ -200,38 +197,26 @@ void Node::updateSettings()
 	cfg.highlight = settings.value( "Highlight", QColor( 255, 255, 0 ) ).value<QColor>();
 	cfg.wireframe = settings.value( "Wireframe", QColor( 0, 255, 0 ) ).value<QColor>();
 
-	highlightColor = cfg.highlight;
-	wireframeColor = cfg.wireframe;
-
 	settings.endGroup();
+}
+
+void Node::setGLColor( FloatVector4 c ) const
+{
+	NifSkopeOpenGLContext::Program *	prog;
+	if ( scene->renderer && ( prog = scene->renderer->getCurrentProgram() ) != nullptr )
+		prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( c ) );
 }
 
 // Old Options API
 //	TODO: Move away from the GL-like naming
-void glHighlightColor( NifSkopeOpenGLContext::Program * prog = nullptr )
-{
-	if ( prog )
-		prog->uni4f( "C", FloatVector4( Color4( highlightColor ) ) );
-}
-
-void glNormalColor( NifSkopeOpenGLContext::Program * prog = nullptr )
-{
-	if ( prog )
-		prog->uni4f( "C", FloatVector4( Color4( wireframeColor ) ) );
-}
-
 void Node::glHighlightColor() const
 {
-	NifSkopeOpenGLContext::Program *	prog;
-	if ( scene->renderer && ( prog = scene->renderer->getCurrentProgram() ) != nullptr )
-		prog->uni4f( "C", FloatVector4( Color4( cfg.highlight ) ) );
+	setGLColor( cfg.highlight );
 }
 
 void Node::glNormalColor() const
 {
-	NifSkopeOpenGLContext::Program *	prog;
-	if ( scene->renderer && ( prog = scene->renderer->getCurrentProgram() ) != nullptr )
-		prog->uni4f( "C", FloatVector4( Color4( cfg.wireframe ) ) );
+	setGLColor( cfg.wireframe );
 }
 
 
@@ -692,7 +677,7 @@ void Node::drawSelection() const
 	}
 }
 
-void DrawVertexSelection( QVector<Vector3> & verts, int i )
+void Node::drawVertexSelection( QVector<Vector3> & verts, int i )
 {
 	glPointSize( GLView::Settings::vertexPointSize );
 	glDepthFunc( GL_LEQUAL );
@@ -713,7 +698,7 @@ void DrawVertexSelection( QVector<Vector3> & verts, int i )
 	}
 }
 
-void DrawTriangleSelection( QVector<Vector3> const & verts, Triangle const & tri )
+void Node::drawTriangleSelection( QVector<Vector3> const & verts, Triangle const & tri )
 {
 	glLineWidth( GLView::Settings::lineWidthWireframe );
 	glDepthFunc( GL_ALWAYS );
@@ -726,13 +711,13 @@ void DrawTriangleSelection( QVector<Vector3> const & verts, Triangle const & tri
 	glEnd();
 }
 
-void DrawTriangleIndex( QVector<Vector3> const & verts, Triangle const & tri, int index )
+void Node::drawTriangleIndex( QVector<Vector3> const & verts, Triangle const & tri, int index )
 {
 	Vector3 c = ( verts.value( tri.v1() ) + verts.value( tri.v2() ) + verts.value( tri.v3() ) ) /  3.0;
 	renderText( c, QString( "%1" ).arg( index ) );
 }
 
-void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack, const Scene * scene, const float origin_color3fv[3] )
+void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack, const Scene * scene, const float origin_color3fv[3] )
 {
 	QString name = (nif) ? nif->itemName( iShape ) : "";
 
@@ -900,7 +885,7 @@ void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QMod
 				}
 
 				if ( n == "Vertices" || n == "Normals" || n == "Vertex Colors" || n == "UV Sets" ) {
-					DrawVertexSelection( verts, i );
+					drawVertexSelection( verts, i );
 				} else if ( ( n == "Faces" || n == "Triangles" ) ) {
 					if ( i == -1 ) {
 						glDepthFunc( GL_ALWAYS );
@@ -910,7 +895,7 @@ void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QMod
 						//	DrawTriangleIndex( verts, nif->get<Triangle>( nif->getIndex( iTris, t ), "Triangle" ), t );
 					} else if ( nif->isCompound( nif->itemStrType( scene->currentIndex ) ) ) {
 						Triangle tri = nif->get<Triangle>( nif->getIndex( iTris, i ), "Triangle" );
-						DrawTriangleSelection( verts, tri );
+						drawTriangleSelection( verts, tri );
 						//DrawTriangleIndex( verts, tri, i );
 					} else if ( nif->itemName( scene->currentIndex ) == "Normal" ) {
 						Triangle tri = nif->get<Triangle>( scene->currentIndex.parent(), "Triangle" );
@@ -944,7 +929,7 @@ void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QMod
 
 						if ( (start_vertex <= tri[0]) && (tri[0] < end_vertex) ) {
 							if ( (start_vertex <= tri[1]) && (tri[1] < end_vertex) && (start_vertex <= tri[2]) && (tri[2] < end_vertex) ) {
-								DrawTriangleSelection( verts, tri );
+								drawTriangleSelection( verts, tri );
 								//DrawTriangleIndex( verts, tri, t );
 							} else {
 								qDebug() << "triangle with multiple materials?" << t;
@@ -991,7 +976,7 @@ void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QMod
 
 						if ( (start_vertex <= tri[0]) && (tri[0] < end_vertex) ) {
 							if ( (start_vertex <= tri[1]) && (tri[1] < end_vertex) && (start_vertex <= tri[2]) && (tri[2] < end_vertex) ) {
-								DrawTriangleSelection( verts, tri );
+								drawTriangleSelection( verts, tri );
 								//DrawTriangleIndex( verts, tri, t );
 							} else {
 								qDebug() << "triangle with multiple materials?" << t;
@@ -1020,7 +1005,7 @@ void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QMod
 	stack.pop();
 }
 
-void drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, const Scene * scene )
+void Node::drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, const Scene * scene )
 {
 	if ( !( nif && iConstraint.isValid() && scene && scene->hasOption(Scene::ShowConstraints) ) )
 		return;
@@ -1060,8 +1045,8 @@ void drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, c
 		if ( scene->currentBlock == nif->getBlockIndex( iConstraint ) ) {
 			// fix: add selected visual to havok meshes
 			glHighlightColor();
-			color_a.fromQColor( highlightColor );
-			color_b.setRGB( highlightColor.blueF(), highlightColor.redF(), highlightColor.greenF() );
+			color_a.fromQColor( cfg.highlight );
+			color_b.setRGB( cfg.highlight.blueF(), cfg.highlight.redF(), cfg.highlight.greenF() );
 		}
 	}
 
@@ -1533,7 +1518,7 @@ void Node::drawHavok()
 	}
 }
 
-void drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosition )
+void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosition )
 {
 	Vector3 offs = nif->get<Vector3>( iPosition, "Offset" );
 	quint16 orient = nif->get<quint16>( iPosition, "Orientation" );
