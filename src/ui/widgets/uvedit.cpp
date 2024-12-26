@@ -1118,12 +1118,11 @@ bool UVWidget::setNifData( NifModel * nifModel, const QModelIndex & nifIndex )
 		if ( !sfMeshIndex.isValid() )
 			return false;
 		MeshFile	meshFile( nif, sfMeshIndex );
-		if ( !( meshFile.isValid() && meshFile.coords.size() > 0 && meshFile.triangles.size() > 0 ) )
+		if ( !( meshFile.isValid() && meshFile.coords1.size() > 0 && meshFile.triangles.size() > 0 ) )
 			return false;
 
 		if ( ( nif->get<quint32>(iShape, "Flags") & 0x0200 ) == 0 ) {
-			for ( qsizetype i = 0; i < meshFile.coords.size(); i++ )
-				texcoords << Vector2( meshFile.coords[i][0], meshFile.coords[i][1] );
+			texcoords = meshFile.coords1;
 			if ( !setTexCoords( &(meshFile.triangles) ) )
 				return false;
 
@@ -1139,7 +1138,7 @@ bool UVWidget::setNifData( NifModel * nifModel, const QModelIndex & nifIndex )
 			if ( !setTexCoords() )
 				return false;
 
-			if ( meshFile.haveTexCoord2 && !coordSetSelect ) {
+			if ( meshFile.coords2.size() >= meshFile.coords1.size() && !coordSetSelect ) {
 				coordSetSelect = new QMenu( tr( "Select Coordinate Set" ) );
 				addAction( coordSetSelect->menuAction() );
 				connect( coordSetSelect, &QMenu::aboutToShow, this, &UVWidget::getCoordSets );

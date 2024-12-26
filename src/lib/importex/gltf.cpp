@@ -403,12 +403,12 @@ void exportCreatePrimitive(tinygltf::Model& model, QByteArray& bin, std::shared_
 			exportFloats( bin, &(tmp[0]), 4 );
 		}
 	} else if ( attr == "TEXCOORD_0" ) {
-		for ( const auto& v : mesh->coords ) {
+		for ( const auto& v : mesh->coords1 ) {
 			exportFloats( bin, &(v[0]), 2 );
 		}
-	} else if ( attr == "TEXCOORD_1" && mesh->haveTexCoord2 ) {
-		for ( const auto& v : mesh->coords ) {
-			exportFloats( bin, &(v[2]), 2 );
+	} else if ( attr == "TEXCOORD_1" ) {
+		for ( const auto& v : mesh->coords2 ) {
+			exportFloats( bin, &(v[0]), 2 );
 		}
 	} else if ( attr == "COLOR_0" ) {
 		for ( const auto& v : mesh->colors ) {
@@ -474,11 +474,11 @@ bool exportCreatePrimitives(tinygltf::Model& model, QByteArray& bin, const BSMes
 		exportCreatePrimitive(model, bin, mesh, prim, "POSITION", mesh->positions.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC3, attributeIndex, gltf);
 		exportCreatePrimitive(model, bin, mesh, prim, "NORMAL", mesh->normals.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC3, attributeIndex, gltf);
 		exportCreatePrimitive(model, bin, mesh, prim, "TANGENT", mesh->tangents.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC4, attributeIndex, gltf);
-		if ( mesh->coords.size() > 0 ) {
-			exportCreatePrimitive(model, bin, mesh, prim, "TEXCOORD_0", mesh->coords.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC2, attributeIndex, gltf);
+		if ( mesh->coords1.size() > 0 ) {
+			exportCreatePrimitive(model, bin, mesh, prim, "TEXCOORD_0", mesh->coords1.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC2, attributeIndex, gltf);
 		}
-		if ( mesh->coords.size() > 0 && mesh->haveTexCoord2 ) {
-			exportCreatePrimitive(model, bin, mesh, prim, "TEXCOORD_1", mesh->coords.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC2, attributeIndex, gltf);
+		if ( mesh->coords2.size() > 0 ) {
+			exportCreatePrimitive(model, bin, mesh, prim, "TEXCOORD_1", mesh->coords2.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC2, attributeIndex, gltf);
 		}
 		exportCreatePrimitive(model, bin, mesh, prim, "COLOR_0", mesh->colors.size(), TINYGLTF_COMPONENT_TYPE_FLOAT, TINYGLTF_TYPE_VEC4, attributeIndex, gltf);
 

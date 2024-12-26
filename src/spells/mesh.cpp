@@ -1012,8 +1012,18 @@ struct SFMeshVertexAttributes
 			normal = FloatVector4( meshFile.normals.at( n ) ).convertToX10Y10Z10();
 		if ( n < meshFile.colors.size() )
 			color = std::uint32_t( FloatVector4( meshFile.colors.at( n ) ) * 255.0f );
-		if ( n < meshFile.coords.size() )
-			texCoords = clearDenorm( FloatVector4( meshFile.coords.at( n ) ), 1.0e-12f ).convertToFloat16();
+		FloatVector4	tmpCoords( 0.0f );
+		if ( n < meshFile.coords1.size() ) {
+			const auto &	tmp = meshFile.coords1.at( n );
+			tmpCoords[0] = tmp[0];
+			tmpCoords[1] = tmp[1];
+		}
+		if ( n < meshFile.coords2.size() ) {
+			const auto &	tmp = meshFile.coords2.at( n );
+			tmpCoords[2] = tmp[0];
+			tmpCoords[3] = tmp[1];
+		}
+		texCoords = clearDenorm( tmpCoords, 1.0e-12f ).convertToFloat16();
 		// TODO: should also test weights?
 	}
 	inline const unsigned char * data() const
