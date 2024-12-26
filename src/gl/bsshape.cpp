@@ -149,23 +149,7 @@ void BSShape::updateData( const NifModel * nif )
 		sortedTriangles = triangles.mid( 0, numTriangles );
 	else
 		sortedTriangles.clear();
-	// validate triangles' vertex indices, throw out triangles with the wrong ones
-	for ( qsizetype i = 0; i < sortedTriangles.size(); i++ ) {
-		const Triangle &	t = sortedTriangles.at( i );
-		qsizetype	maxVertex = std::max( t[0], std::max( t[1], t[2] ) );
-		if ( maxVertex < numVerts ) [[likely]]
-			continue;
-		auto	minVertex = std::min( t[0], std::min( t[1], t[2] ) );
-		if ( qsizetype( minVertex ) >= numVerts )
-			minVertex = 0;
-		Triangle &	tmp = sortedTriangles[i];
-		if ( qsizetype( tmp[0] ) >= numVerts )
-			tmp[0] = minVertex;
-		if ( qsizetype( tmp[1] ) >= numVerts )
-			tmp[1] = minVertex;
-		if ( qsizetype( tmp[2] ) >= numVerts )
-			tmp[2] = minVertex;
-	}
+	removeInvalidIndices();
 
 	// Fill skeleton data
 	resetSkeletonData();
@@ -291,12 +275,12 @@ void BSShape::drawShapes( NodeList * secondPass )
 			return;
 		}
 
-		context->useProgram( "selection.prog" );
-
-		FloatVector4	c( 0.0f, 0.0f, 0.0f, 1.0f );
-		if ( scene->isSelModeObject() )
-			c = getColorKeyFromID( nodeId );
-		setGLColor( c );
+		auto	prog = context->useProgram( "selection.prog" );
+		if ( prog ) {
+			setUniforms( prog );
+			prog->uni1i( "selectionFlags", 0x0001 );
+			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
+		}
 	}
 
 	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( numIndices ), GL_UNSIGNED_SHORT, (void *) 0 );
@@ -311,51 +295,25 @@ void BSShape::drawShapes( NodeList * secondPass )
 
 void BSShape::drawVerts() const
 {
-	auto	context = scene->renderer;
-	if ( !context )
-		return;
-	auto	prog = context->useProgram( "selection.prog" );
-	if ( !prog )
-		return;
-	setUniforms( prog );
+	int	vertexSelected = -1;
 
-	glPointSize( GLView::Settings::vertexSelectPointSize );
-	glNormalColor();
-
-	qsizetype	numVerts = verts.size();
-
-	if ( scene->selecting ) {
-		for ( qsizetype i = 0; i < numVerts; i++ ) {
-			setGLColor( getColorKeyFromID( ( shapeNumber << 16 ) + int( i ) ) );
-			context->fn->glDrawArrays( GL_POINTS, GLint( i ), 1 );
+	if ( !scene->selecting ) {
+		bool	selected = ( iBlock == scene->currentBlock );
+		if ( iSkinPart.isValid() ) {
+			// Vertices are on NiSkinPartition in version 100
+			selected |= ( iSkinPart == scene->currentBlock );
+			selected |= isDynamic;
 		}
-	} else {
-		context->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
-	}
-
-	auto nif = NifModel::fromIndex( iBlock );
-	if ( !nif ) {
-		glEnd();
-		return;
-	}
-
-	// Vertices are on NiSkinPartition in version 100
-	bool selected = iBlock == scene->currentBlock;
-	if ( iSkinPart.isValid() ) {
-		selected |= iSkinPart == scene->currentBlock;
-		selected |= isDynamic;
-	}
-
-
-	// Highlight selected vertex
-	if ( !scene->selecting && selected ) {
-		auto idx = scene->currentIndex;
-		auto n = idx.data( NifSkopeDisplayRole ).toString();
-		if ( n == "Vertex" || n == "Vertices" ) {
-			glHighlightColor();
-			context->fn->glDrawArrays( GL_POINTS, GLint( idx.parent().row() ), 1 );
+		if ( selected ) {
+			// Highlight selected vertex
+			auto idx = scene->currentIndex;
+			auto n = idx.data( NifSkopeDisplayRole ).toString();
+			if ( n == "Vertex" || n == "Vertices" )
+				vertexSelected = idx.parent().row();
 		}
 	}
+
+	Shape::drawVerts( GLView::Settings::vertexSelectPointSize, vertexSelected );
 }
 
 void BSShape::drawSelection() const
@@ -373,7 +331,7 @@ void BSShape::drawSelection() const
 	// Is the current block extra data
 	bool extraData = false;
 
-	auto nif = NifModel::fromValidIndex(blk);
+	auto	nif = NifModel::fromValidIndex(blk);
 	if ( !nif )
 		return;
 
@@ -387,26 +345,19 @@ void BSShape::drawSelection() const
 	if ( blk != iBlock && blk != iSkin && blk != iSkinData && blk != iSkinPart && !extraData )
 		return;
 
+	auto	context = scene->renderer;
+	NifSkopeOpenGLContext::Program *	prog;
+	if ( !( context && bindShape() && ( prog = context->useProgram( "selection.prog" ) ) != nullptr ) )
+		return;
+	setUniforms( prog );
+	prog->uni1i( "selectionFlags", 0 );
+
 	// Name of this index
 	auto n = idx.data( NifSkopeDisplayRole ).toString();
 	// Name of this index's parent
 	auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
 	// Parent index
 	auto pBlock = nif->getBlockIndex( nif->getParent( blk ) );
-
-	auto push = [this] ( const Transform & t ) {
-		if ( transformRigid ) {
-			glPushMatrix();
-			glMultMatrix( t );
-		}
-	};
-
-	auto pop = [this] () {
-		if ( transformRigid )
-			glPopMatrix();
-	};
-
-	push( viewTrans() );
 
 	glDepthFunc( GL_LEQUAL );
 
@@ -434,17 +385,6 @@ void BSShape::drawSelection() const
 	if ( normalScale < 0.1f )
 		normalScale = 0.1f;
 
-
-	// Draw All Verts lambda
-	auto allv = [this]( float size ) {
-		glPointSize( size );
-		glBegin( GL_POINTS );
-
-		for ( int j = 0; j < verts.size(); j++ )
-			glVertex( verts.value( j ) );
-
-		glEnd();
-	};
 
 	if ( !extraData ) {
 		if ( n == "Bounding Sphere" ) {
@@ -539,9 +479,7 @@ void BSShape::drawSelection() const
 	}
 
 	if ( n == "Vertex Data" || n == "Vertex" || n == "Vertices" ) {
-		allv( GLView::Settings::vertexPointSize );
-
-		int s = -1;
+		int	s = -1;
 		if ( (n == "Vertex Data" && p == "Vertex Data")
 			 || (n == "Vertices" && p == "Vertices") ) {
 			s = idx.row();
@@ -549,21 +487,14 @@ void BSShape::drawSelection() const
 			s = idx.parent().row();
 		}
 
-		if ( s >= 0 ) {
-			glPointSize( GLView::Settings::vertexPointSizeSelected );
-			glDepthFunc( GL_ALWAYS );
-			glHighlightColor();
-			glBegin( GL_POINTS );
-			glVertex( verts.value( s ) );
-			glEnd();
-		}
+		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 	}
 
 	glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 
 	// Draw Lines lambda
-	auto lines = [this, &normalScale, &allv, &lineWidth]( const QVector<Vector3> & v ) {
-		allv( GLView::Settings::tbnPointSize );
+	auto lines = [this, &normalScale, &lineWidth]( const QVector<Vector3> & v ) {
+		Shape::drawVerts( GLView::Settings::tbnPointSize, -1 );
 
 		int s = scene->currentIndex.parent().row();
 		glBegin( GL_LINES );
@@ -603,17 +534,15 @@ void BSShape::drawSelection() const
 
 	// Draw Triangles
 	if ( n == "Triangles" ) {
-		int s = scene->currentIndex.row();
-		if ( s >= 0 ) {
+		int s = -1;
+		if ( n == p )
+			s = idx.row();
+		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT,
+										(void *) 0 );
+		if ( s >= 0 && s < sortedTriangles.size() ) {
 			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 			glHighlightColor();
-
-			Triangle tri = triangles.value( s );
-			glBegin( GL_TRIANGLES );
-			glVertex( verts.value( tri.v1() ) );
-			glVertex( verts.value( tri.v2() ) );
-			glVertex( verts.value( tri.v3() ) );
-			glEnd();
+			context->fn->glDrawElements( GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, (void *) ( qsizetype( s ) * 6 ) );
 			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		}
 	}
@@ -707,7 +636,6 @@ void BSShape::drawSelection() const
 			}
 		}
 
-		pop();
 		return;
 	}
 
@@ -723,7 +651,6 @@ void BSShape::drawSelection() const
 				boneSphere( nif, b );
 			}
 		}
-		pop();
 		return;
 	}
 
@@ -741,18 +668,11 @@ void BSShape::drawSelection() const
 	if ( blk == iBlock && idx != iData && p != "Vertex Data" && p != "Vertices" ) {
 		glLineWidth( lineWidth );
 		glNormalColor();
-		for ( const Triangle& tri : triangles ) {
-			glBegin( GL_TRIANGLES );
-			glVertex( verts.value( tri.v1() ) );
-			glVertex( verts.value( tri.v2() ) );
-			glVertex( verts.value( tri.v3() ) );
-			glEnd();
-		}
+		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT,
+										(void *) 0 );
 	}
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
-
-	pop();
 }
 
 BoundSphere BSShape::bounds() const

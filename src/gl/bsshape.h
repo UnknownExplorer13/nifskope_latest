@@ -26,7 +26,7 @@ public:
 
 	// Shape
 
-	void drawVerts() const override;
+	void drawVerts() const;
 	QModelIndex vertexAt( int ) const override;
 
 protected:

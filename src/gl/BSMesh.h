@@ -38,7 +38,7 @@ public:
 
 	// Shape
 
-	void drawVerts() const override;
+	void drawVerts() const;
 	QModelIndex vertexAt(int) const override;
 
 	QVector<std::shared_ptr<MeshFile>> meshes;

@@ -6,6 +6,15 @@ uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
 
 uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
+uniform vec4 highlightColor;
+
+// bit 0 = Scene::selecting
+// bit 1 = vertex mode (drawing points instead of triangles)
+// bits 8 to 15 = point size * 8 (0: do not draw smooth points)
+uniform int selectionFlags;
+// if Scene::selecting == false: vertex selected (-1: none)
+// if Scene::selecting == true: value to add to color key (e.g. shapeID << 16)
+uniform int selectionParam;
 
 uniform int numBones;
 uniform mat4x3 boneTransforms[100];
@@ -43,7 +52,18 @@ void main( void )
 	}
 
 	v = modelViewMatrix * v;
-	gl_Position = projectionMatrix * v;
+	v = projectionMatrix * v;
 
-	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
+	if ( ( selectionFlags & 1 ) != 0 ) {
+		int	colorKey = selectionParam + 1;
+		if ( ( selectionFlags & 2 ) != 0 )
+			colorKey = colorKey + gl_VertexID;
+		C = unpackUnorm4x8( uint( colorKey ) ) + vec4( 0.0005 );
+	} else if ( !( gl_VertexID == selectionParam && ( selectionFlags & 2 ) != 0 ) ) {
+		C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
+	} else {
+		C = highlightColor;
+	}
+
+	gl_Position = v;
 }

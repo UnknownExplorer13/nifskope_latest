@@ -62,11 +62,13 @@ public:
 	// end IControllable
 
 	void updateBoneTransforms();
-	virtual void drawVerts() const {};
-	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); };
-
+	void removeInvalidIndices();
+	void drawVerts( float pointSize, int vertexSelected ) const;
+	void drawNormals( int btnMask = 1, int vertexSelected = -1, float lineLength = 0.25f ) const;
 	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
 	bool bindShape() const;
+
+	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); };
 
 protected:
 	int shapeNumber;

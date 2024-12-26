@@ -59,14 +59,19 @@ void BSMesh::drawShapes( NodeList * secondPass )
 	} else {
 		glDisable( GL_FRAMEBUFFER_SRGB );
 
-		FloatVector4	c( 0.0f, 0.0f, 0.0f, 1.0f );
-		if ( scene->isSelModeObject() )
-			c = getColorKeyFromID( nodeId );
+		if ( drawInSecondPass && scene->isSelModeVertex() ) {
+			glDisable( GL_POLYGON_OFFSET_FILL );
 
-		if ( !( drawInSecondPass && scene->isSelModeVertex() ) ) {
-			auto	prog = context->useProgram( "selection.prog" );
+			drawVerts();
+
+			return;
+		}
+
+		auto	prog = context->useProgram( "selection.prog" );
+		if ( prog ) {
 			setUniforms( prog );
-			setGLColor( c );
+			prog->uni1i( "selectionFlags", 0x0001 );
+			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
 		}
 	}
 
@@ -111,6 +116,7 @@ void BSMesh::drawSelection() const
 	glPolygonOffset(-1.0f, -2.0f);
 
 	setUniforms( prog );
+	prog->uni1i( "selectionFlags", 0 );
 
 	glPointSize( GLView::Settings::vertexPointSize );
 	glLineWidth( GLView::Settings::lineWidthWireframe );
@@ -124,22 +130,11 @@ void BSMesh::drawSelection() const
 	float	normalScale = std::max< float >( boundSphere.radius / 20.0f, 1.0f / 512.0f );
 	qsizetype	numTriangles = sortedTriangles.size();
 
-	// Draw All Verts lambda
-	auto allv = [this]( float size ) {
-		glPointSize( size );
-		glBegin( GL_POINTS );
-
-		for ( int j = 0; j < verts.size(); j++ )
-			glVertex( verts.value( j ) );
-
-		glEnd();
-	};
-
 	// Draw Lines lambda
-	auto lines = [this, &normalScale, &allv]( const QVector<Vector3> & v, int s, bool isBitangent = false ) {
+	auto lines = [this, &normalScale]( const QVector<Vector3> & v, int s, bool isBitangent = false ) {
 		glNormalColor();
 		if ( !isBitangent ) {
-			allv( GLView::Settings::tbnPointSize );
+			Shape::drawVerts( GLView::Settings::tbnPointSize, -1 );
 
 			glLineWidth( GLView::Settings::lineWidthWireframe * 0.78125f );
 			glBegin( GL_LINES );
@@ -191,23 +186,15 @@ void BSMesh::drawSelection() const
 			drawBox( boundsCenter - boundsDims, boundsCenter + boundsDims );
 		}
 	} else if ( n == "Vertices" || n == "UVs" || n == "UVs 2" || n == "Vertex Colors" || n == "Weights" ) {
-		f->glPointSize( GLView::Settings::vertexPointSize );
-		f->glDrawArrays( GL_POINTS, 0, GLsizei( verts.size() ) );
-
-		int	s;
+		int	s = -1;
 		if ( n == p && ( s = idx.row() ) >= 0 ) {
 			if ( n == "Weights" ) {
 				int	weightsPerVertex = int( nif->get<quint32>(idx.parent().parent(), "Weights Per Vertex") );
 				if ( weightsPerVertex > 1 )
 					s /= weightsPerVertex;
 			}
-			glPointSize( GLView::Settings::vertexPointSizeSelected );
-			glDepthFunc( GL_ALWAYS );
-			glHighlightColor();
-			glBegin( GL_POINTS );
-			glVertex( verts.value( s ) );
-			glEnd();
 		}
+		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 	} else if ( n == "Normals" ) {
 		int	s = -1;
 		if ( n == p )
@@ -348,53 +335,36 @@ int BSMesh::meshCount()
 
 void BSMesh::drawVerts() const
 {
-	glNormalColor();
-
-	glPointSize( GLView::Settings::vertexSelectPointSize );
-	glBegin( GL_POINTS );
-	for ( int i = 0; i < verts.size(); i++ ) {
-		if ( scene->selecting ) {
-			getColorKeyFromID( ( shapeNumber << 16 ) + i );
-		}
-		glVertex( verts.value(i) );
-	}
-	glEnd();
-
-	if ( scene->selecting || !( scene->currentBlock == iBlock ) )
-		return;
-
 	int	vertexSelected = -1;
 
-	for ( const auto & idx = scene->currentIndex; idx.isValid(); ) {
-		// Name of this index
-		auto n = idx.data( NifSkopeDisplayRole ).toString();
-		if ( !( n == "Vertices" || n == "UVs" || n == "UVs 2" || n == "Vertex Colors"
-				|| n == "Normals" || n == "Tangents" || n == "Weights" ) ) {
+	if ( !scene->selecting && scene->currentBlock == iBlock ) {
+		for ( const auto & idx = scene->currentIndex; idx.isValid(); ) {
+			// Name of this index
+			auto n = idx.data( NifSkopeDisplayRole ).toString();
+			if ( !( n == "Vertices" || n == "UVs" || n == "UVs 2" || n == "Vertex Colors"
+					|| n == "Normals" || n == "Tangents" || n == "Weights" ) ) {
+				break;
+			}
+			// Name of this index's parent
+			auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
+			if ( n == p ) {
+				vertexSelected = idx.row();
+				if ( n == "Weights" ) {
+					auto	nif = NifModel::fromValidIndex( idx );
+					int	weightsPerVertex = 0;
+					if ( nif )
+						weightsPerVertex = nif->get<int>( idx.parent().parent(), "Weights Per Vertex" );
+					if ( weightsPerVertex > 0 )
+						vertexSelected /= weightsPerVertex;
+					else
+						vertexSelected = -1;
+				}
+			}
 			break;
 		}
-		// Name of this index's parent
-		auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
-		if ( n == p ) {
-			vertexSelected = idx.row();
-			if ( n == "Weights" ) {
-				auto	nif = NifModel::fromValidIndex( idx );
-				int	weightsPerVertex;
-				if ( nif && ( weightsPerVertex = nif->get<int>( idx.parent().parent(), "Weights Per Vertex" ) ) > 0 )
-					vertexSelected /= weightsPerVertex;
-				else
-					vertexSelected = -1;
-			}
-		}
-		break;
 	}
 
-	if ( vertexSelected >= 0 && vertexSelected < verts.size() ) {
-		glHighlightColor();
-		glPointSize( GLView::Settings::vertexPointSizeSelected );
-		glBegin( GL_POINTS );
-		glVertex( verts.value(vertexSelected) );
-		glEnd();
-	}
+	Shape::drawVerts( GLView::Settings::vertexSelectPointSize, vertexSelected );
 }
 
 QModelIndex BSMesh::vertexAt( int c ) const
@@ -506,6 +476,7 @@ void BSMesh::updateData(const NifModel* nif)
 			sortedTriangles = mesh->triangles;
 		}
 		verts = mesh->positions;
+		removeInvalidIndices();
 		coords.resize( mesh->coords2.isEmpty() ? 1 : 2 );
 		coords.first() = mesh->coords1;
 		if ( !mesh->coords2.isEmpty() )

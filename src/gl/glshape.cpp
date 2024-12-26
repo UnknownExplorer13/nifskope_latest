@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "model/nifmodel.h"
 #include "io/material.h"
 #include "gl/renderer.h"
+#include "glview.h"
 
 #include <QDebug>
 #include <QElapsedTimer>
@@ -163,6 +164,80 @@ void Shape::updateBoneTransforms()
 	boundSphere = BoundSphere( transVerts );
 	boundSphere.applyInv( worldTrans() );
 	needUpdateBounds = false;
+}
+
+void Shape::removeInvalidIndices()
+{
+	qsizetype	numVerts = verts.size();
+	qsizetype	numTriangles = sortedTriangles.size();
+	// validate triangles' vertex indices, throw out triangles with the wrong ones
+	for ( qsizetype i = 0; i < numTriangles; i++ ) {
+		const Triangle &	t = sortedTriangles.at( i );
+		qsizetype	maxVertex = std::max( t[0], std::max( t[1], t[2] ) );
+		if ( maxVertex < numVerts ) [[likely]]
+			continue;
+		auto	minVertex = std::min( t[0], std::min( t[1], t[2] ) );
+		if ( qsizetype( minVertex ) >= numVerts )
+			minVertex = 0;
+		Triangle &	tmp = sortedTriangles[i];
+		if ( qsizetype( tmp[0] ) >= numVerts )
+			tmp[0] = minVertex;
+		if ( qsizetype( tmp[1] ) >= numVerts )
+			tmp[1] = minVertex;
+		if ( qsizetype( tmp[2] ) >= numVerts )
+			tmp[2] = minVertex;
+	}
+}
+
+void Shape::drawVerts( float pointSize, int vertexSelected ) const
+{
+	auto	context = scene->renderer;
+	if ( !context )
+		return;
+	auto	prog = context->useProgram( "selection.prog" );
+	if ( !prog )
+		return;
+	setUniforms( prog );
+
+	int	selectionFlags = 0x0002;
+	int	selectionParam = vertexSelected;
+
+	glPointSize( pointSize );
+
+	if ( scene->selecting ) {
+		selectionFlags = selectionFlags | 0x0001;
+		selectionParam = shapeNumber << 16;
+		glDisable( GL_BLEND );
+	} else {
+		glNormalColor();
+		selectionFlags = selectionFlags | ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 );
+		if ( vertexSelected >= 0 )
+			prog->uni4f( "highlightColor", FloatVector4( Color4( cfg.highlight ) ) );
+		glEnable( GL_BLEND );
+		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+	}
+	prog->uni1i( "selectionFlags", selectionFlags );
+	prog->uni1i( "selectionParam", selectionParam );
+
+	qsizetype	numVerts = verts.size();
+	context->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
+	if ( !scene->selecting && vertexSelected >= 0 && vertexSelected < numVerts ) {
+		pointSize = GLView::Settings::vertexPointSizeSelected;
+		glPointSize( pointSize );
+		selectionFlags = ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 ) | 0x0002;
+		prog->uni1i( "selectionFlags", selectionFlags );
+		context->fn->glDrawArrays( GL_POINTS, GLint( vertexSelected ), 1 );
+	}
+
+	prog->uni1i( "selectionFlags", 0 );
+}
+
+void Shape::drawNormals( int btnMask, int vertexSelected, float lineLength ) const
+{
+	// TODO: implement this
+	(void) btnMask;
+	(void) vertexSelected;
+	(void) lineLength;
 }
 
 void Shape::setController( const NifModel * nif, const QModelIndex & iController )
