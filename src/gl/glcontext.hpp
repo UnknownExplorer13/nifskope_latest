@@ -255,6 +255,19 @@ public:
 		size_t getBufferDataSize() const;
 	};
 
+	struct ShapeData {
+		ShapeDataHash	h;
+		ShapeData *	prev;
+		ShapeData *	next;
+		QOpenGLFunctions_4_1_Core *	fn;
+		unsigned int	vao;					// vertex array object
+		unsigned int	ebo;					// element buffer object
+		unsigned int	vbo;					// vertex buffer object
+		ShapeData( NifSkopeOpenGLContext & context, const ShapeDataHash & dataHash,
+					const float * const * attrData, const void * elementData );
+		~ShapeData();
+	};
+
 	//! Context Functions
 	QOpenGLFunctions_4_1_Core *	fn;
 	//! Context
@@ -342,19 +355,6 @@ protected:
 	void rehashShaders();
 
 	void rehashCache();
-
-	struct ShapeData {
-		ShapeDataHash	h;
-		ShapeData *	prev;
-		ShapeData *	next;
-		QOpenGLFunctions_4_1_Core *	fn;
-		unsigned int	vao;					// vertex array object
-		unsigned int	ebo;					// element buffer object
-		unsigned int	vbo;					// vertex buffer object
-		ShapeData( NifSkopeOpenGLContext & context, const ShapeDataHash & dataHash,
-					const float * const * attrData, const void * elementData );
-		~ShapeData();
-	};
 
 	std::vector< ShapeData * >	geometryCache;
 	ShapeData *	cacheLastItem = nullptr;
