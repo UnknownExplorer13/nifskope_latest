@@ -76,7 +76,7 @@ vec3 toGrayscale(vec3 color)
 	return vec3(dot(vec3(0.3, 0.59, 0.11), color));
 }
 
-void main( void )
+void main()
 {
 	vec2 offset = texCoord.st * uvScale + uvOffset;
 

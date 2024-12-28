@@ -24,7 +24,7 @@ layout ( location = 1 ) in vec4	vertexColor;
 layout ( location = 5 ) in vec4	boneWeights0;
 layout ( location = 6 ) in vec4	boneWeights1;
 
-void main( void )
+void main()
 {
 	vec4	v = vec4( vertexPosition, 1.0 );
 
@@ -42,8 +42,7 @@ void main( void )
 				if ( bone >= numBones )
 					continue;
 				float	w = fract( bw );
-				mat4x3	m = boneTransforms[bone];
-				vTmp += m * v * w;
+				vTmp += boneTransforms[bone] * v * w;
 				wSum += w;
 			}
 		}
@@ -51,8 +50,7 @@ void main( void )
 			v = vec4( vTmp / wSum, 1.0 );
 	}
 
-	v = modelViewMatrix * v;
-	v = projectionMatrix * v;
+	v = projectionMatrix * ( modelViewMatrix * v );
 
 	if ( ( selectionFlags & 1 ) != 0 ) {
 		int	colorKey = selectionParam + 1;

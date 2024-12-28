@@ -29,23 +29,26 @@ uniform float falloffDepth;
 in vec3 LightDir;
 in vec3 ViewDir;
 
+in vec2 texCoord;
+
 in vec4 C;
 
 in vec3 N;
-in vec3 v;
+
+out vec4 fragColor;
 
 vec4 colorLookup( float x, float y ) {
 
 	return texture( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0)) );
 }
 
-void main( void )
+void main()
 {
-	vec4 baseMap = texture( BaseMap, gl_TexCoord[0].st * uvScale + uvOffset );
+	vec4 baseMap = texture( BaseMap, texCoord.st * uvScale + uvOffset );
 
 	vec4 color;
 
-	vec3 normal = N;
+	vec3 normal = normalize( N );
 
 	// Reconstructed normal
 	//normal = normalize(cross(dFdy(v.xyz), dFdx(v.xyz)));
@@ -103,6 +106,5 @@ void main( void )
 			discard;
 	}
 
-	gl_FragColor.rgb = color.rgb * glowMult;
-	gl_FragColor.a = color.a;
+	fragColor = vec4( color.rgb * glowMult, color.a );
 }

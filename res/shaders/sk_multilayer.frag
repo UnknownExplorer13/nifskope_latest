@@ -40,12 +40,16 @@ uniform float outerReflection;
 in vec3 LightDir;
 in vec3 ViewDir;
 
+in vec2 texCoord;
+
 in vec4 A;
 in vec4 C;
 in vec4 D;
 
-in mat3 tbnMatrix;
+in mat3 btnMatrix;
 in mat3 reflMatrix;
+
+out vec4 fragColor;
 
 
 vec3 tonemap(vec3 x, float y)
@@ -96,9 +100,9 @@ vec3 ParallaxOffsetAndDepth( vec2 vTexCoord, vec2 vInnerScale, vec3 vViewTS, vec
 	return vec3( vOffsetTexCoord, fTransDist );
 }
 
-void main( void )
+void main()
 {
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
+	vec2 offset = texCoord.st * uvScale + uvOffset;
 
 	vec4 baseMap = texture( BaseMap, offset );
 
@@ -118,7 +122,7 @@ void main( void )
 	vec3 normalTS = normalize(normalMap.rgb * 2.0 - 1.0);
 	if ( !gl_FrontFacing )
 		normalTS *= -1.0;
-	vec3 normal = normalize(tbnMatrix * normalTS);
+	vec3 normal = normalize(btnMatrix * normalTS);
 
 	// Sample the non-parallax offset alpha channel of the inner map
 	//	Used to modulate the innerThickness
@@ -138,7 +142,7 @@ void main( void )
 
 	// Mix between the face normal and the normal map based on the refraction scale
 	vec3 mixedNormal = mix( vec3(0.0, 0.0, 1.0), normalTS, clamp( outerRefraction, 0.0, 1.0 ) );
-	vec3 parallax = ParallaxOffsetAndDepth( offset, innerScale, normalize(E * tbnMatrix), mixedNormal, innerThickness * innerMapAlpha );
+	vec3 parallax = ParallaxOffsetAndDepth( offset, innerScale, normalize(E * btnMatrix), mixedNormal, innerThickness * innerMapAlpha );
 
 	// Sample the inner map at the offset coords
 	vec4 innerMap = texture( InnerMap, parallax.xy * innerScale );
@@ -222,5 +226,5 @@ void main( void )
 	color.rgb = albedo * (diffuse + emissive) + spec;
 	color.rgb = tonemap( color.rgb * D.a, A.a );
 
-	gl_FragColor = color;
+	fragColor = color;
 }

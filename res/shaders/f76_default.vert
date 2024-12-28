@@ -17,9 +17,9 @@ uniform mat3 viewMatrix;
 uniform mat3 normalMatrix;
 uniform mat4 modelViewMatrix;
 uniform mat4 projectionMatrix;
-uniform vec4 lightSourcePosition0;	// W = environment map rotation (-1.0 to 1.0)
-uniform vec4 lightSourceDiffuse0;	// A = overall brightness
-uniform vec4 lightSourceAmbient;	// A = tone mapping control (1.0 = full tone mapping)
+uniform vec4 lightSourcePosition[3];	// W0 = environment map rotation (-1.0 to 1.0), W1, W2 = viewport X, Y
+uniform vec4 lightSourceDiffuse[3];		// A0 = overall brightness, A1, A2 = viewport width, height
+uniform vec4 lightSourceAmbient;		// A = tone mapping control (1.0 = full tone mapping)
 
 uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
 
@@ -44,7 +44,7 @@ mat3 rotateEnv( mat3 m, float rz )
 				vec3(m[2][0] * rz_c - m[2][1] * rz_s, m[2][0] * rz_s + m[2][1] * rz_c, m[2][2] * -1.0));
 }
 
-void main( void )
+void main()
 {
 	vec4	v = vec4( vertexPosition, 1.0 );
 	vec3	n = normalVector;
@@ -93,15 +93,15 @@ void main( void )
 	btnMatrix[1] = normalize( t * normalMatrix );
 	btnMatrix[0] = normalize( b * normalMatrix );
 
-	reflMatrix = rotateEnv( viewMatrix, lightSourcePosition0.w * 3.14159265 );
+	reflMatrix = rotateEnv( viewMatrix, lightSourcePosition[0].w * 3.14159265 );
 
 	if ( projectionMatrix[3][3] == 1.0 )
 		ViewDir = vec3(0.0, 0.0, 1.0);	// orthographic view
 	else
 		ViewDir = -v.xyz;
-	LightDir = lightSourcePosition0.xyz;
+	LightDir = lightSourcePosition[0].xyz;
 
 	A = lightSourceAmbient;
 	C = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
-	D = lightSourceDiffuse0;
+	D = lightSourceDiffuse[0];
 }

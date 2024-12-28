@@ -39,14 +39,16 @@ uniform float lightingEffect2;
 
 uniform mat3 viewMatrix;
 
-in vec3 v;
-
 in vec3 LightDir;
 in vec3 ViewDir;
+
+in vec2 texCoord;
 
 in vec4 A;
 in vec4 C;
 in vec4 D;
+
+out vec4 fragColor;
 
 
 vec3 tonemap(vec3 x, float y)
@@ -84,9 +86,9 @@ vec3 overlay( vec3 ba, vec3 bl )
 	return vec3( overlay(ba.r, bl.r), overlay(ba.g, bl.g), overlay( ba.b, bl.b ) );
 }
 
-void main( void )
+void main()
 {
-	vec2 offset = gl_TexCoord[0].st * uvScale + uvOffset;
+	vec2 offset = texCoord.st * uvScale + uvOffset;
 
 	vec4 baseMap = texture( BaseMap, offset );
 
@@ -203,5 +205,5 @@ void main( void )
 	color.rgb = albedo * (diffuse + emissive) + spec;
 	color.rgb = tonemap( color.rgb * D.a, A.a );
 
-	gl_FragColor = color;
+	fragColor = color;
 }

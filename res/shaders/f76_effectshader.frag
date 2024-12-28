@@ -68,7 +68,7 @@ vec3 fresnelSchlickRoughness(float NdotV, vec3 F0, float roughness)
 	return F0 + (max(vec3(1.0 - roughness), F0) - F0) * pow(1.0 - NdotV, 5.0);
 }
 
-void main( void )
+void main()
 {
 	vec2 offset = texCoord.st * uvScale + uvOffset;
 

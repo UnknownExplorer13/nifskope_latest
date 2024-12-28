@@ -9,7 +9,7 @@ uniform int selectionFlags;
 
 out vec4 fragColor;
 
-void main(void)
+void main()
 {
 	float	a = C.a;
 

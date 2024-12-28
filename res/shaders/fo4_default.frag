@@ -208,7 +208,7 @@ vec4 colorLookup( float x, float y ) {
 	return texture( GreyscaleMap, vec2( clamp(x, 0.0, 1.0), clamp(y, 0.0, 1.0) ) );
 }
 
-void main( void )
+void main()
 {
 	vec2 offset = texCoord.st * uvScale + uvOffset;
 

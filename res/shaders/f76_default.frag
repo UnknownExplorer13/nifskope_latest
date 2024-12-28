@@ -102,7 +102,7 @@ float srgbCompress(float x)
 	return (((y * -0.18732371 + 0.59302883) * y - 0.79095451) * y + 1.42598062) * y - 0.04110602;
 }
 
-void main(void)
+void main()
 {
 	vec2 offset = texCoord.st * uvScale + uvOffset;
 

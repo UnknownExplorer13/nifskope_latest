@@ -106,7 +106,7 @@ vec2 parallaxMapping( vec3 V, vec2 offset )
 	return mix( currentTextureCoords, prevTCoords, weight );
 }
 
-void main( void )
+void main()
 {
 	vec3 L = normalize( LightDir );
 	vec3 E = normalize( ViewDir );
