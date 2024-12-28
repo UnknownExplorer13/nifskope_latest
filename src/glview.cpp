@@ -597,7 +597,7 @@ void GLView::paintGL()
 		mat_diff = c;
 		mat_diff[3] = brightnessScale;
 
-		scene->renderer->lightSourcePosition0 = FloatVector4( lightDir );
+		scene->renderer->lightSourcePosition[0] = FloatVector4( lightDir );
 
 	} else {
 		mat_amb.blendValues( FloatVector4( 0.5f ), 0x07 );
@@ -606,7 +606,7 @@ void GLView::paintGL()
 
 	scene->renderer->viewMatrix = scene->view.rotation;
 	scene->renderer->lightSourceAmbient = mat_amb;
-	scene->renderer->lightSourceDiffuse0 = mat_diff;
+	scene->renderer->lightSourceDiffuse[0] = mat_diff;
 
 	scene->renderer->setGlobalUniforms();
 
@@ -635,9 +635,9 @@ void GLView::paintGL()
 	if ( false && scene->hasOption(Scene::ShowAxes) ) {
 		// Resize viewport to small corner of screen
 		int axesSize = int( std::min< double >( 0.1 * pixelWidth, 125.0 * devicePixelRatioF() ) + 0.5 );
-		glViewport( 0, 0, axesSize, axesSize );
+		scene->renderer->setViewport( 0, 0, axesSize, axesSize );
 
-		Renderer::Program *	prog = scene->renderer->useProgram( "default.prog" );
+		Renderer::Program *	prog = scene->renderer->useProgram( "lines.prog" );
 
 		if ( prog ) {
 			// Square frustum
@@ -662,7 +662,7 @@ void GLView::paintGL()
 		}
 
 		// Restore viewport size
-		glViewport( 0, 0, pixelWidth, pixelHeight );
+		scene->renderer->setViewport( 0, 0, pixelWidth, pixelHeight );
 	}
 
 	scene->renderer->shrinkCache();
@@ -712,7 +712,10 @@ void GLView::resizeGL( int width, int height )
 	if ( !isValid() )
 		return;
 	aspect = GLdouble(width) / GLdouble(height);
-	glViewport( 0, 0, width, height );
+	if ( !scene->renderer ) [[unlikely]]
+		glViewport( 0, 0, width, height );
+	else
+		scene->renderer->setViewport( 0, 0, width, height );
 
 	glDisable(GL_FRAMEBUFFER_SRGB);
 	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
@@ -824,8 +827,10 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	// Texturing, blending, dithering, lighting and smooth shading should be disabled.
 	// The FBO can be used for the drawing operations to keep the drawing operations invisible to the user.
 
-	GLint viewport[4];
-	glGetIntegerv( GL_VIEWPORT, viewport );
+	if ( !scene->renderer )
+		return -1;
+	std::int32_t	viewport[4];
+	scene->renderer->getViewport().convertToInt32( viewport );
 
 	// Create new FBO with multisampling disabled
 	QOpenGLFramebufferObjectFormat fboFmt;
@@ -900,7 +905,7 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 
 QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 {
-	if ( !(model && isVisible() && height()) )
+	if ( !(model && isVisible() && height() && scene->renderer) )
 		return QModelIndex();
 
 	makeCurrent();
@@ -912,7 +917,7 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 	int	hp = pixelHeight;
 	QPointF	posScaled( pos );
 	posScaled *= p;
-	glViewport( 0, 0, wp, hp );
+	scene->renderer->setViewport( 0, 0, wp, hp );
 	glProjection( int( posScaled.x() + 0.5 ), int( posScaled.y() + 0.5 ) );
 
 	QList<DrawFunc> df;

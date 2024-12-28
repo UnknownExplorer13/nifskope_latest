@@ -282,19 +282,20 @@ public:
 	//! Global uniforms
 	Matrix	viewMatrix;
 	Matrix4	projectionMatrix;
-	// W = environment map rotation (-1.0 to 1.0), unused for light sources 1 and 2
-	FloatVector4	lightSourcePosition0;
-	// A = overall brightness, unused for light sources 1 and 2
-	FloatVector4	lightSourceDiffuse0;
+	// W0 = environment map rotation (-1.0 to 1.0), W1 = viewport X, W2 = viewport Y
+	FloatVector4	lightSourcePosition[3];
+	// A0 = overall brightness, A1 = viewport width, A2 = viewport height
+	FloatVector4	lightSourceDiffuse[3];
 	// A = tone mapping control (1.0 = full tone mapping)
 	FloatVector4	lightSourceAmbient;
-	FloatVector4	lightSourcePosition1;
-	FloatVector4	lightSourceDiffuse1;
-	FloatVector4	lightSourcePosition2;
-	FloatVector4	lightSourceDiffuse2;
 
 	NifSkopeOpenGLContext( QOpenGLContext * context );
 	~NifSkopeOpenGLContext();
+
+	//! Set viewport dimensions
+	void setViewport( int x, int y, int width, int height );
+	//! Get previously set viewport dimensions
+	FloatVector4 getViewport() const;
 
 	//! Updates shaders
 	void updateShaders();

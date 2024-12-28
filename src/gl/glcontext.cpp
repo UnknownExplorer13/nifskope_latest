@@ -302,7 +302,8 @@ static QByteArray loadShaderFile( const QString & filepath, int includeDepth = 0
 			continue;
 		n = n + 7;
 
-		QString	includeFileName;
+		QString	includeFileName( QDir::cleanPath( filepath ) );
+		includeFileName.truncate( includeFileName.lastIndexOf( QChar('/') ) + 1 );
 		int	includeState = 0;
 		for ( ; n < data.size(); n++ ) {
 			char	c = data.at( n );
@@ -320,7 +321,7 @@ static QByteArray loadShaderFile( const QString & filepath, int includeDepth = 0
 			if ( includeState == 1 )
 				includeFileName += QChar( c );
 		}
-		if ( includeState != 3 || includeFileName.isEmpty() )
+		if ( includeState != 3 || includeFileName.isEmpty() || includeFileName.endsWith( QChar('/') ) )
 			throw QString( "invalid #include syntax in %1" ).arg( filepath );
 		if ( includeDepth >= 16 )
 			throw QString( "%1: #include recursion depth is too high" ).arg( filepath );
@@ -778,9 +779,9 @@ bool NifSkopeOpenGLContext::Program::uniSampler( BSShaderLightingProperty * bspr
 
 NifSkopeOpenGLContext::NifSkopeOpenGLContext( QOpenGLContext * context )
 	:	fn( QOpenGLVersionFunctionsFactory::get< QOpenGLFunctions_4_1_Core >( context ) ), cx( context ),
-		lightSourcePosition0( 0.0f, 0.0f, 1.0f, 0.0f ), lightSourceDiffuse0( 1.0f ), lightSourceAmbient( 1.0f ),
-		lightSourcePosition1( 0.0f, 0.0f, 1.0f, 0.0f ), lightSourceDiffuse1( 1.0f ),
-		lightSourcePosition2( 0.0f, 0.0f, 1.0f, 0.0f ), lightSourceDiffuse2( 1.0f )
+		lightSourcePosition{ FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f ), FloatVector4( 0.0f ), FloatVector4( 0.0f ) },
+		lightSourceDiffuse{ FloatVector4( 1.0f ), FloatVector4( 0.0f ), FloatVector4( 0.0f ) },
+		lightSourceAmbient( 1.0f )
 {
 	vertexAttrib1f = reinterpret_cast< void (*)( unsigned int, float ) >( cx->getProcAddress( "glVertexAttrib1f" ) );
 	vertexAttrib2fv =
@@ -807,6 +808,29 @@ NifSkopeOpenGLContext::~NifSkopeOpenGLContext()
 		else
 			delete s;
 	}
+}
+
+void NifSkopeOpenGLContext::setViewport( int x, int y, int width, int height )
+{
+	lightSourcePosition[1][3] = float( x );
+	lightSourcePosition[2][3] = float( y );
+	lightSourceDiffuse[1][3] = float( width );
+	lightSourceDiffuse[2][3] = float( height );
+
+	fn->glViewport( GLint( x ), GLint( y ), GLsizei( width ), GLsizei( height ) );
+}
+
+FloatVector4 NifSkopeOpenGLContext::getViewport() const
+{
+	if ( lightSourceDiffuse[1][3] > 0.0f ) [[likely]] {
+		return FloatVector4( lightSourcePosition[1][3], lightSourcePosition[2][3],
+								lightSourceDiffuse[1][3], lightSourceDiffuse[2][3] );
+	}
+
+	GLint	viewportDims[4];
+	fn->glGetIntegerv( GL_VIEWPORT, viewportDims );
+	return FloatVector4( float( viewportDims[0] ), float( viewportDims[1] ),
+							float( viewportDims[2] ), float( viewportDims[3] ) );
 }
 
 NifSkopeOpenGLContext::Shader * NifSkopeOpenGLContext::createShader( const QString & name )
@@ -960,13 +984,9 @@ void NifSkopeOpenGLContext::setGlobalUniforms()
 		currentProgram = p;
 		p->uni3m( "viewMatrix", viewMatrix );
 		p->uni4m( "projectionMatrix", projectionMatrix );
-		p->uni4f( "lightSourcePosition0", lightSourcePosition0 );
-		p->uni4f( "lightSourceDiffuse0", lightSourceDiffuse0 );
+		p->uni4fv( "lightSourcePosition", lightSourcePosition, 3 );
+		p->uni4fv( "lightSourceDiffuse", lightSourceDiffuse, 3 );
 		p->uni4f( "lightSourceAmbient", lightSourceAmbient );
-		p->uni4f( "lightSourcePosition1", lightSourcePosition1 );
-		p->uni4f( "lightSourceDiffuse1", lightSourceDiffuse1 );
-		p->uni4f( "lightSourcePosition2", lightSourcePosition2 );
-		p->uni4f( "lightSourceDiffuse2", lightSourceDiffuse2 );
 	}
 	currentProgram = nullptr;
 	fn->glUseProgram( 0 );
