@@ -1,0 +1,5 @@
+# wireframe shader
+
+# never enabled on models by default
+
+shaders lines.vert wireframe.geom lines.frag

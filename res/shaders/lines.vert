@@ -1,0 +1,76 @@
+#version 410 core
+
+out mat3 btnMatrix;
+
+out vec4 vsColor;
+
+uniform mat3 normalMatrix;
+uniform mat4 modelViewMatrix;
+
+uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
+uniform vec4 highlightColor;
+uniform int selectionParam;			// vertex selected (-1: none)
+
+uniform int numBones;
+uniform mat4x3 boneTransforms[100];
+
+layout ( location = 0 ) in vec3	vertexPosition;
+layout ( location = 1 ) in vec4	vertexColor;
+layout ( location = 2 ) in vec3	normalVector;
+layout ( location = 3 ) in vec3	tangentVector;
+layout ( location = 4 ) in vec3	bitangentVector;
+layout ( location = 5 ) in vec4	boneWeights0;
+layout ( location = 6 ) in vec4	boneWeights1;
+
+void main()
+{
+	vec4	v = vec4( vertexPosition, 1.0 );
+	vec3	n = normalVector;
+	vec3	t = tangentVector;
+	vec3	b = bitangentVector;
+
+	if ( numBones > 0 ) {
+		vec3	vTmp = vec3( 0.0 );
+		vec3	nTmp = vec3( 0.0 );
+		vec3	tTmp = vec3( 0.0 );
+		vec3	bTmp = vec3( 0.0 );
+		float	wSum = 0.0;
+		for ( int i = 0; i < 8; i++ ) {
+			float	bw;
+			if ( i < 4 )
+				bw = boneWeights0[i];
+			else
+				bw = boneWeights1[i & 3];
+			if ( bw > 0.0 ) {
+				int	bone = int( bw );
+				if ( bone >= numBones )
+					continue;
+				float	w = fract( bw );
+				mat4x3	m = boneTransforms[bone];
+				mat3	r = mat3( m );
+				vTmp += m * v * w;
+				nTmp += r * n * w;
+				tTmp += r * t * w;
+				bTmp += r * b * w;
+				wSum += w;
+			}
+		}
+		if ( wSum > 0.0 ) {
+			v = vec4( vTmp / wSum, 1.0 );
+			n = nTmp;
+			t = tTmp;
+			b = bTmp;
+		}
+	}
+
+	gl_Position = modelViewMatrix * v;
+
+	btnMatrix[2] = normalize( n * normalMatrix );
+	btnMatrix[1] = normalize( t * normalMatrix );
+	btnMatrix[0] = normalize( b * normalMatrix );
+
+	if ( gl_VertexID == selectionParam )
+		vsColor = highlightColor;
+	else
+		vsColor = mix( vertexColor, vertexColorOverride, greaterThan( vertexColorOverride, vec4( 0.0 ) ) );
+}
