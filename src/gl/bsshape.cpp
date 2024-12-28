@@ -346,11 +346,8 @@ void BSShape::drawSelection() const
 		return;
 
 	auto	context = scene->renderer;
-	NifSkopeOpenGLContext::Program *	prog;
-	if ( !( context && bindShape() && ( prog = context->useProgram( "selection.prog" ) ) != nullptr ) )
+	if ( !( context && bindShape() ) )
 		return;
-	setUniforms( prog );
-	prog->uni1i( "selectionFlags", 0 );
 
 	// Name of this index
 	auto n = idx.data( NifSkopeDisplayRole ).toString();
@@ -364,19 +361,15 @@ void BSShape::drawSelection() const
 	glEnable( GL_DEPTH_TEST );
 	glDepthMask( GL_FALSE );
 	glEnable( GL_BLEND );
-	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+	context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 
 	glDisable( GL_CULL_FACE );
 
 	GLfloat lineWidth = GLView::Settings::lineWidthWireframe;
-	GLfloat pointSize = GLView::Settings::vertexPointSize;
-
-	glLineWidth( lineWidth );
-	glPointSize( pointSize );
-
-	glNormalColor();
 
 	glEnable( GL_POLYGON_OFFSET_FILL );
+	glEnable( GL_POLYGON_OFFSET_LINE );
+	glEnable( GL_POLYGON_OFFSET_POINT );
 	glPolygonOffset( -1.0f, -2.0f );
 
 	float normalScale = bounds().radius / 20;
@@ -389,10 +382,8 @@ void BSShape::drawSelection() const
 	if ( !extraData ) {
 		if ( n == "Bounding Sphere" ) {
 			auto sph = BoundSphere( nif, idx );
-			if ( sph.radius > 0.0 ) {
-				glColor4f( 1, 1, 1, 0.33f );
-				drawSphereSimple( sph.center, sph.radius, 72 );
-			}
+			if ( sph.radius > 0.0f )
+				Shape::drawBoundingSphere( sph, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
 		} else if ( nif->getBSVersion() >= 151 && n == "Bounding Box" ) {
 			const NifItem *	boundsItem = nif->getItem( idx );
 			Vector3	boundsCenter, boundsDims;
@@ -402,10 +393,8 @@ void BSShape::drawSelection() const
 			}
 			float	minVal = std::min( boundsDims[0], std::min( boundsDims[1], boundsDims[2] ) );
 			float	maxVal = std::max( boundsDims[0], std::max( boundsDims[1], boundsDims[2] ) );
-			if ( minVal > 0.0f && maxVal < 2.1e9f ) {
-				glColor4f( 1, 1, 1, 0.33f );
-				drawBox( boundsCenter - boundsDims, boundsCenter + boundsDims );
-			}
+			if ( minVal > 0.0f && maxVal < 2.1e9f )
+				Shape::drawBoundingBox( boundsCenter, boundsDims, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
 		}
 	}
 
@@ -490,8 +479,6 @@ void BSShape::drawSelection() const
 		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 	}
 
-	glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-
 	// Draw Lines lambda
 	auto lines = [this, &normalScale, &lineWidth]( const QVector<Vector3> & v ) {
 		Shape::drawVerts( GLView::Settings::tbnPointSize, -1 );
@@ -537,14 +524,9 @@ void BSShape::drawSelection() const
 		int s = -1;
 		if ( n == p )
 			s = idx.row();
-		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT,
-										(void *) 0 );
-		if ( s >= 0 && s < sortedTriangles.size() ) {
-			glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
-			glHighlightColor();
-			context->fn->glDrawElements( GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, (void *) ( qsizetype( s ) * 6 ) );
-			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-		}
+		Shape::drawWireframe( FloatVector4( Color4(cfg.wireframe) ) );
+		if ( s >= 0 && s < sortedTriangles.size() )
+			Shape::drawTriangles( s, 1, FloatVector4( Color4(cfg.highlight) ) );
 	}
 
 	// Draw Segments/Subsegments
@@ -665,14 +647,12 @@ void BSShape::drawSelection() const
 	}
 
 	// General wireframe
-	if ( blk == iBlock && idx != iData && p != "Vertex Data" && p != "Vertices" ) {
-		glLineWidth( lineWidth );
-		glNormalColor();
-		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT,
-										(void *) 0 );
-	}
+	if ( blk == iBlock && idx != iData && p != "Vertex Data" && p != "Vertices" && n != "Triangles" )
+		Shape::drawWireframe( FloatVector4( Color4(cfg.wireframe) ) );
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
+	glDisable( GL_POLYGON_OFFSET_LINE );
+	glDisable( GL_POLYGON_OFFSET_POINT );
 }
 
 BoundSphere BSShape::bounds() const

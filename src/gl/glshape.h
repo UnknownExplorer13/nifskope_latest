@@ -64,7 +64,13 @@ public:
 	void updateBoneTransforms();
 	void removeInvalidIndices();
 	void drawVerts( float pointSize, int vertexSelected ) const;
-	void drawNormals( int btnMask = 1, int vertexSelected = -1, float lineLength = 0.25f ) const;
+	// btnMask & 1 = draw bitangents, btnMask & 2 = draw tangents, btnMask & 4 = draw normals
+	void drawNormals( int btnMask = 4, int vertexSelected = -1, float lineLength = 0.25f ) const;
+	void drawWireframe( FloatVector4 color ) const;
+	// i = first triangle, n = number of triangles to draw
+	void drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const;
+	void drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const;
+	void drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const;
 	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
 	bool bindShape() const;
 

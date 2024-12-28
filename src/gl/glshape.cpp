@@ -240,6 +240,60 @@ void Shape::drawNormals( int btnMask, int vertexSelected, float lineLength ) con
 	(void) lineLength;
 }
 
+void Shape::drawWireframe( FloatVector4 color ) const
+{
+	auto	context = scene->renderer;
+	if ( !context || sortedTriangles.isEmpty() )
+		return;
+	auto	prog = context->useProgram( "wireframe.prog" );
+	if ( !prog )
+		return;
+
+	setUniforms( prog );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( color ) );
+	prog->uni1i( "selectionParam", -1 );
+	prog->uni3f( "lineParams", GLView::Settings::lineWidthWireframe, 0.0f, 0.0f );
+
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
+}
+
+void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
+{
+	if ( i < 0 ) {
+		n += i;
+		i = 0;
+	}
+	auto	context = scene->renderer;
+	if ( !context || n < 1 || i >= sortedTriangles.size() )
+		return;
+	n = std::min< qsizetype >( n, sortedTriangles.size() - i );
+	auto	prog = context->useProgram( "selection.prog" );
+	if ( !prog )
+		return;
+
+	setUniforms( prog );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( color ) );
+	prog->uni1i( "selectionFlags", 0 );
+	prog->uni1i( "selectionParam", -1 );
+
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( n * 3 ), GL_UNSIGNED_SHORT, (void *) ( i * 6 ) );
+}
+
+void Shape::drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const
+{
+	// TODO: implement this
+	(void) sph;
+	(void) color;
+}
+
+void Shape::drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const
+{
+	// TODO: implement this
+	(void) boundsCenter;
+	(void) boundsDims;
+	(void) color;
+}
+
 void Shape::setController( const NifModel * nif, const QModelIndex & iController )
 {
 	QString contrName = nif->itemName(iController);
