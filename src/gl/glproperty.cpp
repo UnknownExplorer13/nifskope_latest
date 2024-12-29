@@ -361,7 +361,7 @@ void TexturingProperty::updateImpl( const NifModel * nif, const QModelIndex & in
 				}
 
 				float af = 1.0;
-				float max_af = get_max_anisotropy();
+				float max_af = TexCache::get_max_anisotropy();
 				// Let User Settings decide for trilinear
 				if ( filterMode == GL_LINEAR_MIPMAP_LINEAR )
 					af = max_af;
@@ -470,7 +470,7 @@ bool TexturingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoor
 
 bool TexturingProperty::bind( int id, const QVector<QVector<Vector2> > & texcoords, int stage )
 {
-	return ( activateTextureUnit( scene->renderer->fn, stage ) && bind( id, texcoords ) );
+	return ( scene->textures->activateTextureUnit( stage ) && bind( id, texcoords ) );
 }
 
 QString TexturingProperty::fileName( int id ) const
@@ -933,10 +933,8 @@ int BSShaderLightingProperty::getSFTexture( int & texunit, FloatVector4 & replUn
 		size_t	n = texturePath.length();
 		if ( ( n - 1 ) & ~( size_t(1023) ) )
 			break;		// empty path or not enough space in tmpBuf
-		if ( !( texunit >= 3 && texunit < TexCache::num_texture_units
-				&& activateTextureUnit( scene->renderer->fn, texunit ) ) ) {
+		if ( !( texunit >= 3 && scene->textures->activateTextureUnit( texunit ) ) )
 			break;
-		}
 
 		TexClampMode	clampMode = TexClampMode::WRAP_S_WRAP_T;
 		if ( uvStream ) {
@@ -1118,7 +1116,7 @@ bool BSShaderLightingProperty::bind( const QStringView & fname, bool forceTextur
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT );
 
-	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, get_max_anisotropy() );
+	glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, TexCache::get_max_anisotropy() );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 	glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
 	return true;

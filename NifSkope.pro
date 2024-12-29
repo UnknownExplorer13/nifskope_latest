@@ -169,7 +169,6 @@ HEADERS += \
 	src/gl/glscene.h \
 	src/gl/glshape.h \
 	src/gl/gltex.h \
-	src/gl/gltexloaders.h \
 	src/gl/gltools.h \
 	src/gl/icontrollable.h \
 	src/gl/renderer.h \

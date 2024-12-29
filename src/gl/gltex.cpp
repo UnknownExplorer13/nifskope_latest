@@ -34,7 +34,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "message.h"
 #include "gl/glscene.h"
-#include "gl/gltexloaders.h"
 #include "model/nifmodel.h"
 
 #include <QDebug>
@@ -55,8 +54,9 @@ int TexCache::pbrImportanceSamples = 256;
 int TexCache::hdrToneMapLevel = 8;
 
 //! Maximum anisotropy
-float max_anisotropy = 1.0f;
-void set_max_anisotropy()
+static float max_anisotropy = 1.0f;
+
+void TexCache::set_max_anisotropy()
 {
 	static QSettings settings;
 	int	tmp = roundFloat( settings.value( "Settings/Render/General/Anisotropic Filtering", 4.0 ).toFloat() );
@@ -64,13 +64,15 @@ void set_max_anisotropy()
 	max_anisotropy = std::min( float( tmp ), max_anisotropy );
 }
 
-float get_max_anisotropy()
+float TexCache::get_max_anisotropy()
 {
 	return max_anisotropy;
 }
 
-void initializeTextureUnits( const QOpenGLContext * context )
+void TexCache::setOpenGLContext( NifSkopeOpenGLContext * context )
 {
+	fn = context->fn;
+
 	GLint	tmp = 0;
 	glGetIntegerv( GL_MAX_TEXTURE_IMAGE_UNITS, &tmp );
 	tmp = std::min( std::max( tmp, GLint(1) ), GLint(TexCache::maxTextureUnits) );
@@ -78,16 +80,14 @@ void initializeTextureUnits( const QOpenGLContext * context )
 
 	//qDebug() << "texture units" << TexCache::num_texture_units;
 
-	if ( context->hasExtension( "GL_EXT_texture_filter_anisotropic" ) ) {
+	if ( context->cx->hasExtension( "GL_EXT_texture_filter_anisotropic" ) ) {
 		glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &max_anisotropy );
 		set_max_anisotropy();
 		//qDebug() << "maximum anisotropy" << max_anisotropy;
 	}
-
-	initializeTextureLoaders( context );
 }
 
-bool activateTextureUnit( QOpenGLFunctions_4_1_Core * fn, int stage )
+bool TexCache::activateTextureUnit( int stage )
 {
 	if ( stage >= TexCache::num_texture_units ) [[unlikely]]
 		return false;
@@ -153,6 +153,7 @@ TexCache::TexCache( QObject * parent ) : QObject( parent )
 	textures = nullptr;
 	textureHashMask = 0;
 	textureCount = 0;
+	fn = nullptr;
 	rehashTextures();
 }
 
@@ -168,7 +169,7 @@ QString TexCache::find( const QString & file, const NifModel * nif )
 {
 	if ( file.isEmpty() )
 		return QString();
-	if ( file.startsWith("#") && (file.length() == 9 || file.length() == 10) )
+	if ( file.startsWith( QChar('#') ) && (file.length() == 9 || file.length() == 10) )
 		return file;
 
 	QString filename( file );
@@ -205,7 +206,7 @@ QString TexCache::find( const QString & file, const NifModel * nif )
 QString TexCache::stripPath( const QString & filepath, const QString & nifFolder )
 {
 	QString file = filepath;
-	file = file.replace( "/", "\\" ).toLower();
+	file = file.replace( QChar('/'), QChar('\\') ).toLower();
 	QDir basePath;
 
 	QSettings settings;
@@ -214,13 +215,13 @@ QString TexCache::stripPath( const QString & filepath, const QString & nifFolder
 	QStringList folders = settings.value( "Settings/Resources/Folders", QStringList() ).toStringList();
 
 	for ( QString base : folders ) {
-		if ( base.startsWith( "./" ) || base.startsWith( ".\\" ) ) {
-			base = nifFolder + "/" + base;
+		if ( base.startsWith( QLatin1StringView("./") ) || base.startsWith( QLatin1StringView(".\\") ) ) {
+			base = nifFolder + QChar('/') + base;
 		}
 
 		basePath.setPath( base );
 		base = basePath.absolutePath();
-		base = base.replace( "/", "\\" ).toLower();
+		base = base.replace( QChar('/'), QChar('\\') ).toLower();
 		/*
 		 * note that basePath.relativeFilePath( file ) here is *not*
 		 * what we want - see the above doc comments for this function
@@ -232,7 +233,7 @@ QString TexCache::stripPath( const QString & filepath, const QString & nifFolder
 		}
 	}
 
-	if ( file.startsWith( "/" ) || file.startsWith( "\\" ) )
+	if ( file.startsWith( QChar('/') ) || file.startsWith( QChar('\\') ) )
 		file.remove( 0, 1 );
 
 	return file;
@@ -526,7 +527,7 @@ bool TexCache::exportFile( const QModelIndex & iSource, QString & filepath )
 	if ( !tx.imageInfo )
 		tx.imageInfo = new Tex::ImageInfo;
 
-	return tx.saveAsFile( iSource, filepath );
+	return tx.saveAsFile( *this, iSource, filepath );
 }
 
 bool TexCache::importFile( NifModel * nif, const QModelIndex & iSource, QModelIndex & iData )
@@ -538,7 +539,7 @@ bool TexCache::importFile( NifModel * nif, const QModelIndex & iSource, QModelIn
 			//qDebug() << "TexCache::importFile: Texture has filename (from NIF) " << filename;
 			const Tex::ImageInfo *	i = getTextureInfo( filename );
 			if ( i )
-				return i->savePixelData( nif, iData );
+				return i->savePixelData( *this, nif, iData );
 		}
 	}
 
@@ -550,24 +551,24 @@ bool TexCache::importFile( NifModel * nif, const QModelIndex & iSource, QModelIn
 *  TexCache::Tex
 */
 
-bool TexCache::Tex::saveAsFile( const QModelIndex & index, QString & savepath )
+bool TexCache::Tex::saveAsFile( TexCache & t, const QModelIndex & index, QString & savepath )
 {
 	ImageInfo *	i = imageInfo;
-	i->mipmaps = texLoad( index, i->format, target, i->width, i->height, id );
+	i->mipmaps = t.texLoad( index, i->format, target, i->width, i->height, id );
 	mipmaps = std::uint16_t( i->mipmaps );
 
-	if ( savepath.toLower().endsWith( ".tga" ) ) {
-		return texSaveTGA( index, savepath, i->width, i->height );
+	if ( savepath.toLower().endsWith( QLatin1StringView(".tga") ) ) {
+		return TexCache::texSaveTGA( index, savepath, i->width, i->height );
 	}
 
-	return texSaveDDS( index, savepath, i->width, i->height, i->mipmaps );
+	return TexCache::texSaveDDS( index, savepath, i->width, i->height, i->mipmaps );
 }
 
-bool TexCache::Tex::ImageInfo::savePixelData( NifModel * nif, QModelIndex & iData ) const
+bool TexCache::Tex::ImageInfo::savePixelData( TexCache & t, NifModel * nif, QModelIndex & iData ) const
 {
 	// gltexloaders function goes here
 	//qDebug() << "TexCache::Tex:savePixelData: Packing" << iSource << "from file" << filepath << "to" << iData;
-	return texSaveNIF( nif, filepath, iData );
+	return t.texSaveNIF( nif, filepath, iData );
 }
 
 bool TexCache::loadSettings( QSettings & settings )

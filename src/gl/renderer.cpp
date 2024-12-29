@@ -180,7 +180,7 @@ static int setFlipbookParameters( const CE2Material::Material & m, FloatVector4 
 	return 4;
 }
 
-static inline void setupGLBlendModeSF( int blendMode, QOpenGLFunctions_4_1_Core * fn )
+static inline void setupGLBlendModeSF( int blendMode, NifSkopeOpenGLContext::GLFunctions * fn )
 {
 	// source RGB, destination RGB, source alpha, destination alpha
 	static const GLenum blendModeMap[32] = {
@@ -228,16 +228,18 @@ bool Renderer::setupProgramCE2( const NifModel * nif, Program * prog, Shape * me
 	// regardless of shader settings
 	bool hasCubeMap = scene->hasOption(Scene::DoCubeMapping) && scene->hasOption(Scene::DoLighting);
 	GLint uniCubeMap = prog->uniLocation( "CubeMap" );
-	if ( uniCubeMap < 0 || !activateTextureUnit( fn, texunit ) )
+	if ( uniCubeMap < 0 )
 		return false;
+	fn->glActiveTexture( GL_TEXTURE0 + texunit );
 	hasCubeMap = hasCubeMap && scene->bindCube( cfg.cubeMapPathSTF );
 	if ( !hasCubeMap ) [[unlikely]]
 		scene->bindCube( grayCube, 1 );
 	fn->glUniform1i( uniCubeMap, texunit++ );
 
 	uniCubeMap = prog->uniLocation( "CubeMap2" );
-	if ( uniCubeMap < 0 || !activateTextureUnit( fn, texunit ) )
+	if ( uniCubeMap < 0 )
 		return false;
+	fn->glActiveTexture( GL_TEXTURE0 + texunit );
 	hasCubeMap = hasCubeMap && scene->bindCube( cfg.cubeMapPathSTF, 2 );
 	if ( !hasCubeMap ) [[unlikely]]
 		scene->bindCube( grayCube, 1 );
@@ -246,8 +248,7 @@ bool Renderer::setupProgramCE2( const NifModel * nif, Program * prog, Shape * me
 	prog->uni1i( "hasCubeMap", hasCubeMap );
 
 	// texture unit 2 is reserved for the environment BRDF LUT texture
-	if ( !activateTextureUnit( fn, texunit ) )
-		return false;
+	fn->glActiveTexture( GL_TEXTURE0 + texunit );
 	if ( !lsp->bind( pbr_lut_sf, true, TexClampMode::CLAMP_S_CLAMP_T ) )
 		return false;
 	texunit++;
@@ -755,8 +756,7 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 		if ( uniCubeMap < 0 ) {
 			hasCubeMap = false;
 		} else {
-			if ( !activateTextureUnit( fn, texunit ) )
-				return false;
+			fn->glActiveTexture( GL_TEXTURE0 + texunit );
 			QString	fname = bsprop->fileName( 4 );
 			const QString *	cube = &fname;
 			if ( hasCubeMap && ( fname.isEmpty() || !scene->bindCube( fname ) ) ) {
@@ -768,8 +768,7 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 			fn->glUniform1i( uniCubeMap, texunit++ );
 			if ( nifVersion >= 151 && ( uniCubeMap = prog->uniLocation( "CubeMap2" ) ) >= 0 ) {
 				// Fallout 76: load second cube map for diffuse lighting
-				if ( !activateTextureUnit( fn, texunit ) )
-					return false;
+				fn->glActiveTexture( GL_TEXTURE0 + texunit );
 				hasCubeMap = hasCubeMap && scene->bindCube( *cube, 2 );
 				if ( !hasCubeMap ) [[unlikely]]
 					scene->bindCube( grayCube, 1 );
@@ -783,8 +782,7 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 			prog->uniSampler( bsprop, "EnvironmentMap", 5, texunit, white, clamp );
 		} else {
 			if ( prog->uniLocation( "EnvironmentMap" ) >= 0 ) {
-				if ( !activateTextureUnit( fn, texunit ) )
-					return false;
+				fn->glActiveTexture( GL_TEXTURE0 + texunit );
 				if ( !bsprop->bind( pbr_lut_sf, true, TexClampMode::CLAMP_S_CLAMP_T ) )
 					return false;
 				fn->glUniform1i( prog->uniLocation( "EnvironmentMap" ), texunit++ );
@@ -854,8 +852,7 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 				if ( fname.isEmpty() )
 					fname = cube;
 
-				if ( !activateTextureUnit( fn, texunit ) )
-					return false;
+				fn->glActiveTexture( GL_TEXTURE0 + texunit );
 				if ( !scene->bindCube( fname ) && !scene->bindCube( cube ) && !scene->bindCube( grayCube, 1 ) )
 					return false;
 
@@ -1015,8 +1012,7 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 		hasCubeMap = false;
 		GLint uniBaseMap = prog->uniLocation( "BaseMap" );
 		if ( uniBaseMap >= 0 ) [[likely]] {
-			if ( !activateTextureUnit( fn, texunit ) )
-				return false;
+			fn->glActiveTexture( GL_TEXTURE0 + texunit );
 			if ( !texprop->bind( 0 ) )
 				texprop->bind( 0, ( !scene->hasOption(Scene::DoErrorColor) ? white : magenta ) );
 			fn->glUniform1i( uniBaseMap, texunit++ );
@@ -1026,8 +1022,7 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 	GLint	uniCubeMap = prog->uniLocation( "CubeMap" );
 	// always bind a cube map to the cube sampler on texture unit 1 to avoid invalid operation error
 	if ( uniCubeMap >= 0 ) [[likely]] {
-		if ( !activateTextureUnit( fn, texunit ) )
-			return false;
+		fn->glActiveTexture( GL_TEXTURE0 + texunit );
 		if ( !( hasCubeMap && bsprop && !esp && scene->bindCube( bsprop->fileName( 4 ) ) ) ) {
 			scene->bindCube( grayCube, 1 );
 			hasCubeMap = false;
@@ -1045,8 +1040,7 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 	} else {
 		GLint uniNormalMap = prog->uniLocation( "NormalMap" );
 		if ( uniNormalMap >= 0 ) {
-			if ( !activateTextureUnit( fn, texunit ) )
-				return false;
+			fn->glActiveTexture( GL_TEXTURE0 + texunit );
 			QString fname = texprop->fileName( 0 );
 			if ( !fname.isEmpty() ) {
 				int pos = fname.lastIndexOf( "_" );
@@ -1082,7 +1076,8 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 
 	} else if ( !bsprop ) {
 		GLint uniGlowMap = prog->uniLocation( "GlowMap" );
-		if ( uniGlowMap >= 0 && activateTextureUnit( fn, texunit ) ) {
+		if ( uniGlowMap >= 0 ) {
+			fn->glActiveTexture( GL_TEXTURE0 + texunit );
 			bool	result = false;
 			QString fname = texprop->fileName( 0 );
 			if ( !fname.isEmpty() ) {
@@ -1504,10 +1499,11 @@ void Renderer::drawSkyBox( Scene * scene )
 	// Always bind cube to texture unit 0, regardless of shader settings
 	bool	hasCubeMap = scene->hasOption(Scene::DoCubeMapping) && scene->hasOption(Scene::DoLighting);
 	GLint	uniCubeMap = prog->uniLocation( "CubeMap" );
-	if ( uniCubeMap < 0 || !activateTextureUnit( fn, texunit ) ) {
+	if ( uniCubeMap < 0 ) {
 		stopProgram();
 		return;
 	}
+	fn->glActiveTexture( GL_TEXTURE0 + texunit );
 	if ( hasCubeMap )
 		hasCubeMap = scene->bindCube( bsVersion < 170 ? cfg.cubeMapPathFO76 : cfg.cubeMapPathSTF );
 	if ( !hasCubeMap )
