@@ -26,7 +26,7 @@ void BSMesh::transformShapes()
 
 void BSMesh::drawShapes( NodeList * secondPass )
 {
-	if ( isHidden() || ( !scene->hasOption(Scene::ShowMarkers) && name.contains("EditorMarker") ) )
+	if ( isHidden() || ( !scene->hasOption(Scene::ShowMarkers) && name.contains(QLatin1StringView("EditorMarker")) ) )
 		return;
 
 	// Draw translucent meshes in second pass
@@ -44,6 +44,12 @@ void BSMesh::drawShapes( NodeList * secondPass )
 	if ( !bindShape() )
 		return;
 
+	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+		glDisable( GL_FRAMEBUFFER_SRGB );
+		drawVerts();
+		return;
+	}
+
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	if ( drawInSecondPass )
 		glPolygonOffset( 0.5f, 1.0f );
@@ -59,14 +65,6 @@ void BSMesh::drawShapes( NodeList * secondPass )
 	} else {
 		glDisable( GL_FRAMEBUFFER_SRGB );
 
-		if ( drawInSecondPass && scene->isSelModeVertex() ) {
-			glDisable( GL_POLYGON_OFFSET_FILL );
-
-			drawVerts();
-
-			return;
-		}
-
 		auto	prog = context->useProgram( "selection.prog" );
 		if ( prog ) {
 			setUniforms( prog );
@@ -79,34 +77,37 @@ void BSMesh::drawShapes( NodeList * secondPass )
 
 	context->stopProgram();
 	glDisable( GL_POLYGON_OFFSET_FILL );
-
-	if ( scene->isSelModeVertex() )
-		drawVerts();
 }
 
 void BSMesh::drawSelection() const
 {
-	if ( scene->hasOption(Scene::ShowNodes) )
-		Node::drawSelection();
+	if ( !scene->isSelModeVertex() ) {
+		if ( scene->hasOption(Scene::ShowNodes) )
+			Node::drawSelection();
 
-	auto& blk = scene->currentBlock;
-
-	if ( isHidden() || !( scene->isSelModeObject() && blk == iBlock ) )
-		return;
+		if ( !( scene->isSelModeObject() && scene->currentBlock == iBlock ) )
+			return;
+	}
 
 	auto &	idx = scene->currentIndex;
-	auto	nif = NifModel::fromValidIndex(blk);
+	auto	nif = scene->nifModel;
 	auto	context = scene->renderer;
-	if ( !( nif && context && bindShape() ) )
+	if ( isHidden() || !( nif && context && bindShape() ) )
 		return;
 
+	glDepthFunc( GL_LEQUAL );
 	glEnable( GL_DEPTH_TEST );
 	glDepthMask( GL_FALSE );
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_FRAMEBUFFER_SRGB );
+
+	if ( scene->isSelModeVertex() ) {
+		drawVerts();
+		return;
+	}
+
 	glEnable( GL_BLEND );
 	context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
-	glDisable( GL_CULL_FACE );
-
-	glDisable( GL_FRAMEBUFFER_SRGB );
 
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	glEnable( GL_POLYGON_OFFSET_LINE );

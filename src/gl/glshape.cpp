@@ -202,13 +202,15 @@ void Shape::drawVerts( float pointSize, int vertexSelected ) const
 	int	selectionFlags = 0x0002;
 	int	selectionParam = vertexSelected;
 
-	glPointSize( pointSize );
+	glEnable( GL_POLYGON_OFFSET_POINT );
+	glPolygonOffset( 0.0f, -100.0f );
 
 	if ( scene->selecting ) {
 		selectionFlags = selectionFlags | 0x0001;
 		selectionParam = shapeNumber << 16;
 		glDisable( GL_BLEND );
 	} else {
+		pointSize += 0.5f;
 		glNormalColor();
 		selectionFlags = selectionFlags | ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 );
 		if ( vertexSelected >= 0 )
@@ -216,19 +218,21 @@ void Shape::drawVerts( float pointSize, int vertexSelected ) const
 		glEnable( GL_BLEND );
 		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 	}
+	glPointSize( pointSize );
 	prog->uni1i( "selectionFlags", selectionFlags );
 	prog->uni1i( "selectionParam", selectionParam );
 
 	qsizetype	numVerts = verts.size();
 	context->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
 	if ( !scene->selecting && vertexSelected >= 0 && vertexSelected < numVerts ) {
-		pointSize = GLView::Settings::vertexPointSizeSelected;
+		pointSize = GLView::Settings::vertexPointSizeSelected + 0.5f;
 		glPointSize( pointSize );
 		selectionFlags = ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 ) | 0x0002;
 		prog->uni1i( "selectionFlags", selectionFlags );
 		context->fn->glDrawArrays( GL_POINTS, GLint( vertexSelected ), 1 );
 	}
 
+	glDisable( GL_POLYGON_OFFSET_POINT );
 	prog->uni1i( "selectionFlags", 0 );
 }
 

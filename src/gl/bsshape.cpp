@@ -232,7 +232,7 @@ void BSShape::drawShapes( NodeList * secondPass )
 		return;
 
 	// TODO: Only run this if BSXFlags has "EditorMarkers present" flag
-	if ( !scene->hasOption(Scene::ShowMarkers) && name.contains( "EditorMarker" ) )
+	if ( !scene->hasOption(Scene::ShowMarkers) && name.contains( QLatin1StringView("EditorMarker") ) )
 		return;
 
 	// Draw translucent meshes in second pass
@@ -245,6 +245,12 @@ void BSShape::drawShapes( NodeList * secondPass )
 
 	if ( !bindShape() )
 		return;
+
+	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+		glDisable( GL_FRAMEBUFFER_SRGB );
+		drawVerts();
+		return;
+	}
 
 	// Render polygon fill slightly behind alpha transparency and wireframe
 	glEnable( GL_POLYGON_OFFSET_FILL );
@@ -267,14 +273,6 @@ void BSShape::drawShapes( NodeList * secondPass )
 		if ( nif->getBSVersion() >= 151 )
 			glDisable( GL_FRAMEBUFFER_SRGB );
 
-		if ( drawInSecondPass && scene->isSelModeVertex() ) {
-			glDisable( GL_POLYGON_OFFSET_FILL );
-
-			drawVerts();
-
-			return;
-		}
-
 		auto	prog = context->useProgram( "selection.prog" );
 		if ( prog ) {
 			setUniforms( prog );
@@ -288,9 +286,6 @@ void BSShape::drawShapes( NodeList * secondPass )
 	context->stopProgram();
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
-
-	if ( scene->isSelModeVertex() )
-		drawVerts();
 }
 
 void BSShape::drawVerts() const
@@ -318,36 +313,49 @@ void BSShape::drawVerts() const
 
 void BSShape::drawSelection() const
 {
-	glDisable(GL_FRAMEBUFFER_SRGB);
-	if ( scene->hasOption(Scene::ShowNodes) )
-		Node::drawSelection();
+	if ( !scene->isSelModeVertex() ) {
+		if ( scene->hasOption(Scene::ShowNodes) )
+			Node::drawSelection();
 
-	if ( isHidden() || !scene->isSelModeObject() )
+		if ( !scene->isSelModeObject() )
+			return;
+	}
+
+	auto nif = scene->nifModel;
+	if ( isHidden() || !nif )
 		return;
-
 	auto idx = scene->currentIndex;
 	auto blk = scene->currentBlock;
 
 	// Is the current block extra data
 	bool extraData = false;
 
-	auto	nif = NifModel::fromValidIndex(blk);
-	if ( !nif )
-		return;
-
 	// Set current block name and detect if extra data
 	auto blockName = nif->itemName( blk );
-	if ( blockName.startsWith( "BSPackedCombined" ) )
-		extraData = true;
-
 	// Don't do anything if this block is not the current block
 	//	or if there is not extra data
-	if ( blk != iBlock && blk != iSkin && blk != iSkinData && blk != iSkinPart && !extraData )
+	if ( blockName.startsWith( QLatin1StringView("BSPackedCombined") ) )
+		extraData = true;
+	else if ( blk != iBlock && blk != iSkin && blk != iSkinData && blk != iSkinPart && !scene->isSelModeVertex() )
 		return;
 
 	auto	context = scene->renderer;
 	if ( !( context && bindShape() ) )
 		return;
+
+	glDepthFunc( GL_LEQUAL );
+	glEnable( GL_DEPTH_TEST );
+	glDepthMask( GL_FALSE );
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_FRAMEBUFFER_SRGB );
+
+	if ( scene->isSelModeVertex() ) {
+		drawVerts();
+		return;
+	}
+
+	glEnable( GL_BLEND );
+	context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 
 	// Name of this index
 	auto n = idx.data( NifSkopeDisplayRole ).toString();
@@ -355,15 +363,6 @@ void BSShape::drawSelection() const
 	auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
 	// Parent index
 	auto pBlock = nif->getBlockIndex( nif->getParent( blk ) );
-
-	glDepthFunc( GL_LEQUAL );
-
-	glEnable( GL_DEPTH_TEST );
-	glDepthMask( GL_FALSE );
-	glEnable( GL_BLEND );
-	context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
-
-	glDisable( GL_CULL_FACE );
 
 	GLfloat lineWidth = GLView::Settings::lineWidthWireframe;
 
@@ -398,11 +397,11 @@ void BSShape::drawSelection() const
 		}
 	}
 
-	if ( blockName.startsWith( "BSPackedCombined" ) && pBlock == iBlock ) {
+	if ( blockName.startsWith( QLatin1StringView("BSPackedCombined") ) && pBlock == iBlock ) {
 		QVector<QModelIndex> idxs;
 		if ( n == "Bounding Sphere" ) {
 			idxs += idx;
-		} else if ( n.startsWith( "BSPackedCombined" ) ) {
+		} else if ( n.startsWith( QLatin1StringView("BSPackedCombined") ) ) {
 			auto data = nif->getIndex( idx, "Object Data" );
 			int dataCt = nif->rowCount( data );
 
@@ -510,12 +509,12 @@ void BSShape::drawSelection() const
 	};
 
 	// Draw Normals
-	if ( n.contains( "Normal" ) ) {
+	if ( n.contains( QLatin1StringView("Normal") ) ) {
 		lines( norms );
 	}
 
 	// Draw Tangents
-	if ( n.contains( "Tangent" ) ) {
+	if ( n.contains( QLatin1StringView("Tangent") ) ) {
 		lines( tangents );
 	}
 

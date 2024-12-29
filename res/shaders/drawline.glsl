@@ -1,4 +1,3 @@
-
 uniform vec4 lightSourcePosition[3];	// W0 = environment map rotation (-1.0 to 1.0), W1, W2 = viewport X, Y
 uniform vec4 lightSourceDiffuse[3];		// A0 = overall brightness, A1, A2 = viewport width, height
 
@@ -27,17 +26,16 @@ void drawLine( vec4 p0, vec4 p1 )
 
 	gl_Position = vec4( p0_ndc.xy - d, p0_ndc.z, 1.0 );
 	EmitVertex();
-	gl_Position = vec4( p0_ndc.xy + n, p0_ndc.z, 1.0 );
-	EmitVertex();
 	gl_Position = vec4( p0_ndc.xy - n, p0_ndc.z, 1.0 );
 	EmitVertex();
-	gl_Position = vec4( p1_ndc.xy + n, p1_ndc.z, 1.0 );
+	gl_Position = vec4( p0_ndc.xy + n, p0_ndc.z, 1.0 );
 	EmitVertex();
 	gl_Position = vec4( p1_ndc.xy - n, p1_ndc.z, 1.0 );
+	EmitVertex();
+	gl_Position = vec4( p1_ndc.xy + n, p1_ndc.z, 1.0 );
 	EmitVertex();
 	gl_Position = vec4( p1_ndc.xy + d, p1_ndc.z, 1.0 );
 	EmitVertex();
 
 	EndPrimitive();
 }
-
