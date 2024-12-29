@@ -235,7 +235,7 @@ void NifSkopeOpenGLContext::ConditionGroup::addCondition( Condition * c )
 	conditions.append( c );
 }
 
-NifSkopeOpenGLContext::Shader::Shader( const std::string_view & n, unsigned int t, QOpenGLFunctions_4_1_Core * fn )
+NifSkopeOpenGLContext::Shader::Shader( const std::string_view & n, unsigned int t, GLFunctions * fn )
 	: f( fn ), name( n ), id( 0 ), status( false ), isProgram( !t )
 {
 	if ( t )
@@ -372,7 +372,7 @@ bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 }
 
 
-NifSkopeOpenGLContext::Program::Program( const std::string_view & n, QOpenGLFunctions_4_1_Core * fn )
+NifSkopeOpenGLContext::Program::Program( const std::string_view & n, GLFunctions * fn )
 	: Shader( n, 0, fn ), nextProgram( nullptr )
 {
 	uniLocationsMap = new UniformLocationMapItem[64];
@@ -744,8 +744,9 @@ bool NifSkopeOpenGLContext::Program::uniSampler( BSShaderLightingProperty * bspr
 	int	uniSamp = uniLocation( var );
 	if ( uniSamp < 0 )
 		return true;
-	if ( !activateTextureUnit( f, texunit ) )
+	if ( texunit >= TexCache::num_texture_units ) [[unlikely]]
 		return false;
+	f->glActiveTexture( GL_TEXTURE0 + texunit );
 
 	// TODO: On stream 155 bsprop->fileName can reference incorrect strings because
 	// the BSSTS is not filled out nor linked from the BSSP
@@ -778,7 +779,7 @@ bool NifSkopeOpenGLContext::Program::uniSampler( BSShaderLightingProperty * bspr
 
 
 NifSkopeOpenGLContext::NifSkopeOpenGLContext( QOpenGLContext * context )
-	:	fn( QOpenGLVersionFunctionsFactory::get< QOpenGLFunctions_4_1_Core >( context ) ), cx( context ),
+	:	fn( QOpenGLVersionFunctionsFactory::get< NifSkopeOpenGLContext::GLFunctions >( context ) ), cx( context ),
 		lightSourcePosition{ FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f ), FloatVector4( 0.0f ), FloatVector4( 0.0f ) },
 		lightSourceDiffuse{ FloatVector4( 1.0f ), FloatVector4( 0.0f ), FloatVector4( 0.0f ) },
 		lightSourceAmbient( 1.0f )
@@ -1015,7 +1016,7 @@ void NifSkopeOpenGLContext::bindShape(
 		}
 	}
 
-	QOpenGLFunctions_4_1_Core &	f = *fn;
+	GLFunctions &	f = *fn;
 	if ( d ) {
 		if ( d != cacheLastItem ) {
 			d->prev->next = d->next;
@@ -1141,7 +1142,7 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 	std::uint32_t	attrDataSize = dataHash.getBufferDataSize() - elementDataSize;
 	std::uintptr_t	attrOffset = 0;
 
-	QOpenGLFunctions_4_1_Core &	f = *( context.fn );
+	GLFunctions &	f = *( context.fn );
 	f.glGenVertexArrays( 1, &vao );
 	f.glBindVertexArray( vao );
 	f.glGenBuffers( 1, &vbo );
@@ -1178,7 +1179,7 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 
 NifSkopeOpenGLContext::ShapeData::~ShapeData()
 {
-	QOpenGLFunctions_4_1_Core &	f = *fn;
+	GLFunctions &	f = *fn;
 	f.glBindVertexArray( 0 );
 	f.glDeleteVertexArrays( 1, &vao );
 	f.glDeleteBuffers( 1, &ebo );

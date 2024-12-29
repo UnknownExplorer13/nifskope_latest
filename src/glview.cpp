@@ -105,10 +105,14 @@ GLView::GLView( QWindow * p )
 
 	QSurfaceFormat	fmt;
 
-	// OpenGL version (4.1, core profile)
+	// OpenGL version (4.1 or 4.2, core profile)
 	fmt.setRenderableType( QSurfaceFormat::OpenGL );
 	fmt.setMajorVersion( 4 );
+#ifdef Q_OS_MACOS
 	fmt.setMinorVersion( 1 );
+#else
+	fmt.setMinorVersion( 2 );
+#endif
 	fmt.setProfile( QSurfaceFormat::CoreProfile );
 	fmt.setOption( QSurfaceFormat::DeprecatedFunctions, false );
 
@@ -346,6 +350,7 @@ void GLView::initializeGL()
 	}
 	glFuncs->initializeOpenGLFunctions();
 	scene->setOpenGLContext( glContext );
+	textures->setOpenGLContext( scene->renderer );
 
 	GLenum err;
 
@@ -359,8 +364,6 @@ void GLView::initializeGL()
 			qDebug() << "Max samples:" << maxSamples;
 		}*/
 	}
-
-	initializeTextureUnits( glContext );
 
 	if ( scene->renderer->initialize() )
 		updateShaders();

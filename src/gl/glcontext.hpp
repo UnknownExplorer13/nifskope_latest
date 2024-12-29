@@ -36,7 +36,11 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QString>
 #include <QVector>
 #include <QModelIndex>
-#include <QOpenGLFunctions_4_1_Core>
+#ifdef Q_OS_MACOS
+#  include <QOpenGLFunctions_4_1_Core>
+#else
+#  include <QOpenGLFunctions_4_2_Core>
+#endif
 
 #include "data/niftypes.h"
 
@@ -45,6 +49,13 @@ class QOpenGLContext;
 
 class NifSkopeOpenGLContext
 {
+public:
+#ifdef Q_OS_MACOS
+	using GLFunctions = QOpenGLFunctions_4_1_Core;
+#else
+	using GLFunctions = QOpenGLFunctions_4_2_Core;
+#endif
+
 protected:
 	//! Base Condition class for shader programs
 	class Condition
@@ -104,14 +115,14 @@ protected:
 	{
 public:
 		// type = GL_FRAGMENT_SHADER, GL_GEOMETRY_SHADER or GL_VERTEX_SHADER, or 0 for programs
-		Shader( const std::string_view & name, unsigned int type, QOpenGLFunctions_4_1_Core * fn );
+		Shader( const std::string_view & name, unsigned int type, GLFunctions * fn );
 		~Shader();
 
 		bool load( const QString & filepath );
 		void clear();
 		void printCompileError( const QString & err );
 
-		QOpenGLFunctions_4_1_Core * f;
+		GLFunctions * f;
 		const std::string_view & name;
 		unsigned int id;
 		bool status;
@@ -123,7 +134,7 @@ public:
 	class Program : public Shader
 	{
 public:
-		Program( const std::string_view & name, QOpenGLFunctions_4_1_Core * fn );
+		Program( const std::string_view & name, GLFunctions * fn );
 		~Program();
 
 		bool load( const QString & filepath, NifSkopeOpenGLContext * context );
@@ -259,7 +270,7 @@ public:
 		ShapeDataHash	h;
 		ShapeData *	prev;
 		ShapeData *	next;
-		QOpenGLFunctions_4_1_Core *	fn;
+		GLFunctions *	fn;
 		unsigned int	vao;					// vertex array object
 		unsigned int	ebo;					// element buffer object
 		unsigned int	vbo;					// vertex buffer object
@@ -269,11 +280,11 @@ public:
 	};
 
 	//! Context Functions
-	QOpenGLFunctions_4_1_Core *	fn;
+	GLFunctions *	fn;
 	//! Context
 	QOpenGLContext *	cx;
 
-	// work around core profile functions missing from QOpenGLFunctions_4_1_Core
+	// work around core profile functions missing from QOpenGLFunctions_4_*_Core
 	void ( *vertexAttrib1f )( unsigned int index, float v );
 	void ( *vertexAttrib2fv )( unsigned int index, const float * v );
 	void ( *vertexAttrib3fv )( unsigned int index, const float * v );

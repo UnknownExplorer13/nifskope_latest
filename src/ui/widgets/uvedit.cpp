@@ -34,6 +34,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "message.h"
 #include "nifskope.h"
+#include "gl/glcontext.hpp"
 #include "gl/gltex.h"
 #include "gl/gltools.h"
 #include "model/nifmodel.h"
@@ -112,8 +113,19 @@ QStringList UVWidget::texnames = {
 UVWidget::UVWidget( QWidget * parent )
 	: QOpenGLWidget( parent, Qt::Window ), undoStack( new QUndoStack( this ) )
 {
+	cx = nullptr;
 	{
 		QSurfaceFormat	fmt = format();
+		// OpenGL version (4.1 or 4.2, core profile)
+		fmt.setRenderableType( QSurfaceFormat::OpenGL );
+		fmt.setMajorVersion( 4 );
+#ifdef Q_OS_MACOS
+		fmt.setMinorVersion( 1 );
+#else
+		fmt.setMinorVersion( 2 );
+#endif
+		fmt.setProfile( QSurfaceFormat::CoreProfile );
+		fmt.setOption( QSurfaceFormat::DeprecatedFunctions, false );
 		fmt.setColorSpace( QColorSpace::SRgb );
 		fmt.setSamples( 4 );
 		setFormat( fmt );
@@ -196,6 +208,7 @@ UVWidget::~UVWidget()
 {
 	delete textures;
 	nif = nullptr;
+	delete cx;
 }
 
 void UVWidget::updateSettings()
@@ -214,7 +227,8 @@ void UVWidget::initializeGL()
 {
 	glMatrixMode( GL_MODELVIEW );
 
-	initializeTextureUnits( context() );
+	cx = new NifSkopeOpenGLContext( context() );
+	textures->setOpenGLContext( cx );
 
 	glShadeModel( GL_SMOOTH );
 	//glShadeModel( GL_LINE_SMOOTH );
