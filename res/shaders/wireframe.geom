@@ -12,7 +12,7 @@ out vec4 C;
 
 void main()
 {
-	C = vsColor[0];
+	C = vec4( vsColor[0].rgb, vsColor[0].a * min( lineParams.x, 1.0 ) );
 
 	for ( int i = 0; i < 3; i++ ) {
 		vec4	p0 = projectionMatrix * gl_in[i * 3].gl_Position;
