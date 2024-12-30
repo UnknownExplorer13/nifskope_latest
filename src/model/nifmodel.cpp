@@ -1529,6 +1529,8 @@ QVariant NifModel::data( const QModelIndex & index, int role ) const
 			// TODO: checkbox, "show invalid only"
 			if ( column == ValueCol && item->isTriangle() ) {
 				const NifItem * nv = findItemX( item, "Num Vertices" );
+				if ( !nv )
+					nv = findItemX( item, "Num Verts" );
 
 				if ( !nv ) {
 					qDebug() << "Num Vertices is null";
