@@ -14,13 +14,11 @@ void main()
 {
 	C = vec4( vsColor[0].rgb, vsColor[0].a * min( lineParams.x, 1.0 ) );
 
-	for ( int i = 0; i < 3; i++ ) {
-		vec4	p0 = projectionMatrix * gl_in[i * 3].gl_Position;
-		vec4	p1 = projectionMatrix * gl_in[i * 3 + 1].gl_Position;
-		vec4	p2 = projectionMatrix * gl_in[i * 3 + 2].gl_Position;
+	vec4	p0 = projectionMatrix * gl_in[0].gl_Position;
+	vec4	p1 = projectionMatrix * gl_in[1].gl_Position;
+	vec4	p2 = projectionMatrix * gl_in[2].gl_Position;
 
-		drawLine( p0, p1 );
-		drawLine( p1, p2 );
-		drawLine( p2, p0 );
-	}
+	drawLine( p0, p1 );
+	drawLine( p1, p2 );
+	drawLine( p2, p0 );
 }
