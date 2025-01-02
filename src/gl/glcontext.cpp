@@ -1172,9 +1172,11 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 		}
 	}
 
-	f.glGenBuffers( 1, &ebo );
-	f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ebo );
-	f.glBufferData( GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr( elementDataSize ), elementData, GL_STATIC_DRAW );
+	if ( elementDataSize ) [[likely]] {
+		f.glGenBuffers( 1, &ebo );
+		f.glBindBuffer( GL_ELEMENT_ARRAY_BUFFER, ebo );
+		f.glBufferData( GL_ELEMENT_ARRAY_BUFFER, GLsizeiptr( elementDataSize ), elementData, GL_STATIC_DRAW );
+	}
 }
 
 NifSkopeOpenGLContext::ShapeData::~ShapeData()
@@ -1182,7 +1184,8 @@ NifSkopeOpenGLContext::ShapeData::~ShapeData()
 	GLFunctions &	f = *fn;
 	f.glBindVertexArray( 0 );
 	f.glDeleteVertexArrays( 1, &vao );
-	f.glDeleteBuffers( 1, &ebo );
+	if ( ebo ) [[likely]]
+		f.glDeleteBuffers( 1, &ebo );
 	f.glDeleteBuffers( 1, &vbo );
 }
 
