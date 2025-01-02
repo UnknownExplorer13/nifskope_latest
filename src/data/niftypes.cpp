@@ -64,15 +64,7 @@ QString NumOrMinMax( float val, char f, int prec )
 		return "<float_max>";
 
 	// display 0x80000000 as -0.0
-	union flt_int
-	{
-		float f;
-		quint32 i;
-	};
-	flt_int _val;
-	_val.f = val;
-
-	if ( _val.i == 0x80000000 )
+	if ( std::bit_cast< std::uint32_t >( val ) == 0x80000000U )
 		return QString( "-%1" ).arg( QString::number( val, f, prec ) );
 
 	// usual case
@@ -293,20 +285,12 @@ Matrix Matrix::inverted () const
 
 Matrix Matrix::toYUp() const
 {
-	auto m1 = Matrix();
-	auto m2 = Matrix();
-	std::memcpy(m1.m, m, sizeof(Matrix));
-	std::memcpy(m2.m, Y_UP, sizeof(Matrix));
-	return m1 * m2;
+	return *this * Matrix( &(Y_UP[0][0]) );
 }
 
 Matrix Matrix::toZUp() const
 {
-	auto m1 = Matrix();
-	auto m2 = Matrix();
-	std::memcpy(m1.m, m, sizeof(Matrix));
-	std::memcpy(m2.m, Z_UP, sizeof(Matrix));
-	return m1 * m2;
+	return *this * Matrix( &(Z_UP[0][0]) );
 }
 
 QString Matrix::toHtml() const
@@ -751,19 +735,61 @@ QString Transform::toString() const
 
 Matrix4 Transform::toMatrix4() const
 {
-	Matrix4 m;
+	FloatVector4 m[4];
+	const float * r = rotation.data();
+	m[0] = FloatVector4( r );		// 0, 1, 2, 3
+	m[1] = FloatVector4( r + 4 );	// 4, 5, 6, 7
+	m[2] = FloatVector4( r + 5 );	// 5, 6, 7, 8
+	m[3] = FloatVector4::convertVector3( &(translation[0]) );
+	FloatVector4 s = FloatVector4( scale ).blendValues( m[3], 0x08 );
 
-	for ( int c = 0; c < 3; c++ ) {
-		for ( int d = 0; d < 3; d++ )
-			m( c, d ) = rotation( d, c ) * scale;
+	m[2].blendValues( m[0], 0x04 );	// 5, 6, 2, 8
+	m[1].blendValues( m[0], 0x02 );	// 4, 1, 6, 7
+	m[0].blendValues( m[2], 0x02 );	// 0, 6, 2, 3
+	m[2].shuffleValues( 0x72 );		// 2, 5, 8, 6
+	m[1].shuffleValues( 0xB1 );		// 1, 4, 7, 6
+	m[0].shuffleValues( 0x9C );		// 0, 3, 6, 2
+	m[2] *= s;
+	m[1] *= s;
+	m[0] *= s;
+	m[3][3] = 1.0f;
 
-		m( 3, c ) = translation[ c ];
-	}
-
-	m( 0, 3 ) = 0.0;
-	m( 1, 3 ) = 0.0;
-	m( 2, 3 ) = 0.0;
-	m( 3, 3 ) = 1.0;
-	return m;
+	return Matrix4( &(m[0][0]) );
 }
 
+Matrix4 Matrix4::operator*( const Matrix4 & m2 ) const
+{
+	FloatVector4 m_0( &(m[0][0]) );
+	FloatVector4 m_1( &(m[1][0]) );
+	FloatVector4 m_2( &(m[2][0]) );
+	FloatVector4 m_3( &(m[3][0]) );
+
+	FloatVector4 m3[4];
+	m3[0] = ( m_0 * m2.m[0][0] ) + ( m_1 * m2.m[0][1] ) + ( m_2 * m2.m[0][2] ) + ( m_3 * m2.m[0][3] );
+	m3[1] = ( m_0 * m2.m[1][0] ) + ( m_1 * m2.m[1][1] ) + ( m_2 * m2.m[1][2] ) + ( m_3 * m2.m[1][3] );
+	m3[2] = ( m_0 * m2.m[2][0] ) + ( m_1 * m2.m[2][1] ) + ( m_2 * m2.m[2][2] ) + ( m_3 * m2.m[2][3] );
+	m3[3] = ( m_0 * m2.m[3][0] ) + ( m_1 * m2.m[3][1] ) + ( m_2 * m2.m[3][2] ) + ( m_3 * m2.m[3][3] );
+
+	return Matrix4( &(m3[0][0]) );
+}
+
+Matrix4 Matrix4::operator*( const Transform & t ) const
+{
+	const float * r = t.rotation.data();
+	FloatVector4 m2_0 = FloatVector4( r ) * t.scale;
+	FloatVector4 m2_1 = FloatVector4( r + 3 ) * t.scale;
+	FloatVector4 m2_2 = FloatVector4::convertVector3( r + 6 ) * t.scale;
+	FloatVector4 m2_3 = FloatVector4::convertVector3( &(t.translation[0]) );
+
+	FloatVector4 m3[4];
+	m3[0] = ( FloatVector4( &(m[0][0]) ) * m2_0[0] ) + ( FloatVector4( &(m[1][0]) ) * m2_1[0] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_2[0] );
+	m3[1] = ( FloatVector4( &(m[0][0]) ) * m2_0[1] ) + ( FloatVector4( &(m[1][0]) ) * m2_1[1] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_2[1] );
+	m3[2] = ( FloatVector4( &(m[0][0]) ) * m2_0[2] ) + ( FloatVector4( &(m[1][0]) ) * m2_1[2] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_2[2] );
+	m3[3] = ( FloatVector4( &(m[0][0]) ) * m2_3[0] ) + ( FloatVector4( &(m[1][0]) ) * m2_3[1] )
+			+ ( FloatVector4( &(m[2][0]) ) * m2_3[2] ) + FloatVector4( &(m[3][0]) );
+
+	return Matrix4( &(m3[0][0]) );
+}
