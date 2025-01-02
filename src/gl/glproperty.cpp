@@ -255,6 +255,7 @@ void glProperty( AlphaProperty * p )
 		glDisable( GL_BLEND );
 	}
 
+#if 0
 	static const GLenum testMap[8] = {
 		GL_ALWAYS, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL, GL_NEVER
 	};
@@ -266,6 +267,7 @@ void glProperty( AlphaProperty * p )
 	} else {
 		glDisable( GL_ALPHA_TEST );
 	}
+#endif
 }
 
 int AlphaProperty::glProperty( float & alphaTestThreshold, const AlphaProperty * p )
@@ -277,7 +279,6 @@ int AlphaProperty::glProperty( float & alphaTestThreshold, const AlphaProperty *
 		glDisable( GL_BLEND );
 	}
 
-	glDisable( GL_ALPHA_TEST );
 	int	alphaTestFunc = -1;
 	if ( p && p->alphaTest && p->scene->hasOption(Scene::DoBlending) ) {
 		alphaTestFunc = p->alphaFunc;
