@@ -396,14 +396,15 @@ SettingsRender::SettingsRender( QWidget * parent ) :
 	color( "Background", ui->colorBackground, ui->background, QColor( 46, 46, 46 ) );
 	color( "Wireframe", ui->colorWireframe, ui->wireframe, QColor( 0, 255, 0 ) );
 	color( "Highlight", ui->colorHighlight, ui->highlight, QColor( 255, 255, 0 ) );
+	color( "Grid", ui->colorGrid, ui->gridColor, QColor( 99, 99, 99 ) );
 
 
-	auto alphaSlider = [this]( ColorWheel * c, ColorLineEdit * e, QHBoxLayout * l ) {
+	auto alphaSlider = [this]( ColorWheel * c, ColorLineEdit * e, QHBoxLayout * l, float a = 1.0f ) {
 		auto alpha = new AlphaSlider( Qt::Vertical );
 		alpha->setParent( this );
 
 		c->setAlpha( true );
-		e->setAlpha( 1.0 );
+		e->setAlpha( a );
 		l->addWidget( alpha );
 
 		connect( c, &ColorWheel::sigColor, alpha, &AlphaSlider::setColor );
@@ -416,6 +417,7 @@ SettingsRender::SettingsRender( QWidget * parent ) :
 
 	alphaSlider( ui->colorWireframe, ui->wireframe, ui->layAlphaWire );
 	alphaSlider( ui->colorHighlight, ui->highlight, ui->layAlphaHigh );
+	alphaSlider( ui->colorGrid, ui->gridColor, ui->layAlphaGrid, 0.8f );
 
 	connect( ui->btnClearCubeCache, &QPushButton::clicked, this, &SettingsRender::clearCubeCache );
 	connect( ui->btnLoadF76CubeMap, &QPushButton::clicked, this, &SettingsRender::selectF76CubeMap );

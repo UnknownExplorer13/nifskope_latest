@@ -1088,8 +1088,18 @@
        <string>Colors</string>
       </attribute>
       <layout class="QGridLayout" name="gridLayout_3">
-       <item row="2" column="1">
-        <widget class="ColorLineEdit" name="highlight" native="true">
+       <item row="0" column="1">
+        <widget class="ColorLineEdit" name="background" native="true">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
+           <horstretch>0</horstretch>
+           <verstretch>0</verstretch>
+          </sizepolicy>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="3">
+        <widget class="ColorLineEdit" name="wireframe" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
            <horstretch>0</horstretch>
@@ -1104,8 +1114,11 @@
        <item row="1" column="3">
         <widget class="ColorWheel" name="colorWireframe" native="true"/>
        </item>
-       <item row="0" column="3">
-        <widget class="ColorLineEdit" name="wireframe" native="true">
+       <item row="1" column="4">
+        <layout class="QHBoxLayout" name="layAlphaWire"/>
+       </item>
+       <item row="2" column="1">
+        <widget class="ColorLineEdit" name="highlight" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
            <horstretch>0</horstretch>
@@ -1114,8 +1127,8 @@
          </property>
         </widget>
        </item>
-       <item row="0" column="1">
-        <widget class="ColorLineEdit" name="background" native="true">
+       <item row="2" column="3">
+        <widget class="ColorLineEdit" name="gridColor" native="true">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Maximum">
            <horstretch>0</horstretch>
@@ -1127,11 +1140,14 @@
        <item row="3" column="1">
         <widget class="ColorWheel" name="colorHighlight" native="true"/>
        </item>
-       <item row="1" column="4">
-        <layout class="QHBoxLayout" name="layAlphaWire"/>
-       </item>
        <item row="3" column="2">
         <layout class="QHBoxLayout" name="layAlphaHigh"/>
+       </item>
+       <item row="3" column="3">
+        <widget class="ColorWheel" name="colorGrid" native="true"/>
+       </item>
+       <item row="3" column="4">
+        <layout class="QHBoxLayout" name="layAlphaGrid"/>
        </item>
       </layout>
      </widget>
