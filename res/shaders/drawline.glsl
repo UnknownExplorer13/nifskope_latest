@@ -30,19 +30,14 @@ void drawLine( vec4 p0, vec4 p1 )
 
 	vec2	d = normalize( p1_ss - p0_ss ) * max( lineParams.x * 0.5, 0.5 );
 	vec2	n = vec2( -d.y, d.x ) / vpScale;
-	d = d / vpScale;
 
-	gl_Position = vec4( p0_ndc.xy - d, p0_ndc.z, 1.0 );
+	gl_Position = vec4( p0_ndc.xy + n, p0_ndc.z, 1.0 );
 	EmitVertex();
 	gl_Position = vec4( p0_ndc.xy - n, p0_ndc.z, 1.0 );
 	EmitVertex();
-	gl_Position = vec4( p0_ndc.xy + n, p0_ndc.z, 1.0 );
-	EmitVertex();
-	gl_Position = vec4( p1_ndc.xy - n, p1_ndc.z, 1.0 );
-	EmitVertex();
 	gl_Position = vec4( p1_ndc.xy + n, p1_ndc.z, 1.0 );
 	EmitVertex();
-	gl_Position = vec4( p1_ndc.xy + d, p1_ndc.z, 1.0 );
+	gl_Position = vec4( p1_ndc.xy - n, p1_ndc.z, 1.0 );
 	EmitVertex();
 
 	EndPrimitive();
