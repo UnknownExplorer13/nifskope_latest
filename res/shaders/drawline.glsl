@@ -1,9 +1,7 @@
 uniform vec4 lightSourcePosition[3];	// W0 = environment map rotation (-1.0 to 1.0), W1, W2 = viewport X, Y
 uniform vec4 lightSourceDiffuse[3];		// A0 = overall brightness, A1, A2 = viewport width, height
 
-uniform vec3 lineParams;			// width, stipple factor, stipple pattern
-
-out vec4 lineCoords;
+uniform float lineWidth;
 
 void drawLine( vec4 p0, vec4 p1 )
 {
@@ -26,9 +24,8 @@ void drawLine( vec4 p0, vec4 p1 )
 
 	vec2	p0_ss = p0_ndc.xy * vpScale;
 	vec2	p1_ss = p1_ndc.xy * vpScale;
-	lineCoords = vec4( p0_ss, p1_ss ) + vec4( vpOffs, vpOffs );
 
-	vec2	d = normalize( p1_ss - p0_ss ) * max( lineParams.x * 0.5, 0.5 );
+	vec2	d = normalize( p1_ss - p0_ss ) * max( lineWidth * 0.5, 0.5 );
 	vec2	n = vec2( -d.y, d.x ) / vpScale;
 
 	gl_Position = vec4( p0_ndc.xy + n, p0_ndc.z, 1.0 );
