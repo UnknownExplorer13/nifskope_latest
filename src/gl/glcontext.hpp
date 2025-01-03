@@ -245,7 +245,6 @@ public:
 		// M = (attrMask >> (N * 4)) & 15 = vertex attribute mode for attribute N:
 		//         0: unused attribute, attrData[N] can be nullptr or invalid
 		//    1 to 4: array of float, vec2, vec3 or vec4, attrData[N] is expected to contain vertCnt * M floats
-		//   9 to 12: static attribute that does not use a VBO, M & 7 floats are read from attrData[N]
 		std::uint64_t	attrMask;
 		std::uint32_t	numVerts;
 		std::uint32_t	elementBytes;
@@ -323,6 +322,7 @@ public:
 	}
 
 	void setGlobalUniforms();
+	void setDefaultVertexAttribs( std::uint64_t attrMask, const float * const * attrData );
 
 	//! Load and bind geometry data without drawing the shape
 	void bindShape( unsigned int numVerts, std::uint64_t attrMask, size_t elementDataSize,

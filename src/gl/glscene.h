@@ -79,6 +79,7 @@ public:
 
 	void draw();
 	void drawShapes();
+	void drawGrid();
 	void drawNodes();
 	void drawHavok();
 	void drawFurn();
@@ -215,6 +216,11 @@ public:
 
 	QVector<Shape *> shapes;
 
+	QColor gridColor;
+
+	FloatVector4 currentGLColor;
+	FloatVector4 currentGLLineParams;	// line width, stipple factor, stipple pattern, point size
+
 	BoundSphere bounds() const;
 
 	float timeMin() const;
@@ -235,6 +241,66 @@ protected:
 	mutable float tMin = 0, tMax = 0;
 
 	void updateTimeBounds() const;
+
+public:
+	//! gltools.cpp interface
+	NifSkopeOpenGLContext::Program * useProgram( std::string_view name );
+	void setGLColor( const QColor & c );
+	inline void setGLColor( FloatVector4 c )
+	{
+		currentGLColor = c;
+	}
+	inline void setGLColor( float r, float g, float b, float a )
+	{
+		currentGLColor = FloatVector4( r, g, b, a );
+	}
+	inline void setGLLineParams( float lineWidth, float stippleFactor = 0.0f, int stipplePattern = 0 )
+	{
+		currentGLLineParams[0] = lineWidth;
+		currentGLLineParams[1] = stippleFactor;
+		currentGLLineParams[2] = stipplePattern;
+	}
+	inline void setGLPointSize( float pointSize )
+	{
+		currentGLLineParams[3] = pointSize;
+	}
+	// flags = 1: set matrix for selection.prog only
+	// flags = 2: set matrix for lines.prog only
+	void setModelViewMatrix( const Matrix4 & m, int flags = 0 );
+	void setModelViewMatrix( const Transform & t, int flags = 0 );
+	void setModelViewMatrix( const Transform & t1, const Transform & t2, int flags = 0 );
+	void setModelViewMatrix( const Transform & t1, const Transform & t2, const Transform & t3, int flags = 0 );
+	void drawPoint( const Vector3 & a );
+	void drawLine( const Vector3 & a, const Vector3 & b );
+	void drawLines( const float * positions, size_t numVerts, const float * colors = nullptr,
+					unsigned int elementMode = GL_LINES );
+	void drawLineStrip( const float * positions, size_t numVerts, const float * colors = nullptr );
+	void drawAxes( const Vector3 & c, float axis, bool color = true );
+	void drawAxesOverlay( const Transform & vt, const Vector3 & c, float axis, const Vector3 & axesDots );
+	void drawGrid( float s, int lines, int sub, FloatVector4 color, FloatVector4 axis1Color, FloatVector4 axis2Color );
+	void drawBox( const Vector3 & a, const Vector3 & b );
+	void drawCircle( const Vector3 & c, const Vector3 & n, float r, int sd = 16 );
+	void drawArc( const Vector3 & c, const Vector3 & x, const Vector3 & y, float an, float ax, int sd = 8 );
+	void drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & x, const Vector3 & y,
+						float an, float ax, float r, int sd = 8 );
+	void drawCone( const Vector3 & c, Vector3 n, float a, int sd = 16 );
+	void drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane,
+							float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd = 16 );
+	void drawSphereSimple( const Vector3 & c, float r, int sd = 36 );
+	void drawSphere( const Vector3 & c, float r, int sd = 8 );
+	void drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
+	void drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
+	void drawDashLine( const Vector3 & a, const Vector3 & b, int sd = 15 );
+	void drawConvexHull( const NifModel * nif, const QModelIndex & iShape, float scale, bool solid = false );
+	void drawNiTSS( const NifModel * nif, const QModelIndex & iShape, bool solid = false );
+	void drawCMS( const NifModel * nif, const QModelIndex & iShape, bool solid = false );
+	void drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd = 16, bool solid = false );
+	void drawRail( const Vector3 & a, const Vector3 & b );
+
+	// vec3 position, vec4 color, vec3 normal, vec3 tangent, vec3 bitangent, vec4 weights0, vec4 weights1,
+	// vec2 texcoord0, ..., vec2 texcoord8
+	static const float * const	defaultVertexAttrs[16];
+	static constexpr std::uint64_t	defaultAttrMask = 0x2222222224433343ULL;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( Scene::SceneOptions )

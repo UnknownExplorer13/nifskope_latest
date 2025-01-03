@@ -201,8 +201,7 @@ float	GLView::Settings::vertexPointSizeSelected = 10.0f;
 float	GLView::Settings::lineWidthAxes = 2.0f;
 float	GLView::Settings::lineWidthWireframe = 1.6f;
 float	GLView::Settings::lineWidthHighlight = 2.5f;
-float	GLView::Settings::lineWidthGrid1 = 1.0f;
-float	GLView::Settings::lineWidthGrid2 = 0.25f;
+float	GLView::Settings::lineWidthGrid = 1.4f;
 float	GLView::Settings::lineWidthSelect = 5.0f;
 float	GLView::Settings::zoomInScale = 0.95f;
 float	GLView::Settings::zoomOutScale = 1.0f / 0.95f;
@@ -225,6 +224,9 @@ void GLView::updateSettings()
 	z = settings.value( "General/Camera/Mwheel Zoom Speed", 8 ).toInt();
 	z = std::min< int >( std::max< int >( z, 0 ), 16 );
 
+	if ( scene )
+		scene->gridColor = settings.value( "Colors/Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>();
+
 	settings.endGroup();
 
 	// TODO: make these configurable via the UI
@@ -236,8 +238,7 @@ void GLView::updateSettings()
 	Settings::lineWidthAxes = float( p * 2.0 );
 	Settings::lineWidthWireframe = float( p * 1.6 );
 	Settings::lineWidthHighlight = float( p * 2.5 );
-	Settings::lineWidthGrid1 = float( p * 1.0 );
-	Settings::lineWidthGrid2 = float( p * 0.25 );
+	Settings::lineWidthGrid = float( p * 1.4 );
 	Settings::lineWidthSelect = float( p * 5.0 );
 
 	double	tmp = std::pow( 0.95, std::sqrt( double(1 << z) * (1.0 / 256.0) ) );
@@ -478,22 +479,25 @@ void GLView::paintGL()
 		doCenter = false;
 	}
 
+	NifSkopeOpenGLContext *	cx = scene->renderer;
+
 	// Transform the scene
-	Matrix ap;
+	static const float	axisRotation[27] = {
+		1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,		// Z
+		0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,		// Y
+		0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f		// X
+	};
+	const float *	ap = axisRotation;
 
-	if ( cfg.upAxis == YAxis ) {
-		ap( 0, 0 ) = 0; ap( 0, 1 ) = 0; ap( 0, 2 ) = 1;
-		ap( 1, 0 ) = 1; ap( 1, 1 ) = 0; ap( 1, 2 ) = 0;
-		ap( 2, 0 ) = 0; ap( 2, 1 ) = 1; ap( 2, 2 ) = 0;
-	} else if ( cfg.upAxis == XAxis ) {
-		ap( 0, 0 ) = 0; ap( 0, 1 ) = 1; ap( 0, 2 ) = 0;
-		ap( 1, 0 ) = 0; ap( 1, 1 ) = 0; ap( 1, 2 ) = 1;
-		ap( 2, 0 ) = 1; ap( 2, 1 ) = 0; ap( 2, 2 ) = 0;
-	}
+	if ( cfg.upAxis == YAxis )
+		ap = ap + 9;
+	else if ( cfg.upAxis == XAxis )
+		ap = ap + 18;
 
+	Transform	viewTrans;
 	viewTrans.rotation.fromEuler( deg2rad(Rot[0]), deg2rad(Rot[1]), deg2rad(Rot[2]) );
 	viewTrans.translation = viewTrans.rotation * Pos;
-	viewTrans.rotation = viewTrans.rotation * ap;
+	viewTrans.rotation = viewTrans.rotation * Matrix( ap );
 
 	if ( view != ViewWalk )
 		viewTrans.translation[2] -= Dist * 2;
@@ -503,81 +507,28 @@ void GLView::paintGL()
 	// Setup projection mode
 	glProjection();
 
-	// Draw the grid
-	if ( false && scene->hasOption(Scene::ShowGrid) ) {
-		glDisable( GL_BLEND );
-		glEnable( GL_DEPTH_TEST );
-		glDepthMask( GL_TRUE );
-		glDepthFunc( GL_LESS );
-
-		// Keep the grid "grounded" regardless of Up Axis
-		Transform gridTrans = viewTrans;
-		if ( cfg.upAxis != ZAxis )
-			gridTrans.rotation = viewTrans.rotation * ap.inverted();
-
-		glLoadMatrix( gridTrans );
-
-		// TODO: Configurable grid in Settings
-		// 1024 game units, major lines every 128, minor lines every 64
-		drawGrid( 1024.0f * scale(), 16, 2 );
-	}
-
-#if 0 && !defined(QT_NO_DEBUG)
-	// Debug scene bounds
-	glEnable( GL_DEPTH_TEST );
-	glDepthMask( GL_TRUE );
-	glDepthFunc( GL_LESS );
-	glLoadMatrix( viewTrans );
-	if ( debugMode == DbgBounds ) {
-		BoundSphere bs = scene->bounds();
-		bs |= BoundSphere( Vector3(), axis );
-		drawSphere( bs.center, bs.radius );
-	}
-#endif
-
 	FloatVector4	mat_amb( 0.0f, 0.0f, 0.0f, 1.0f );
 	FloatVector4	mat_diff( 0.0f, 0.0f, 0.0f, 1.0f );
+	Vector3	lightDir( 0.0f, 0.0f, 1.0f );
+	bool	drawLightPos = false;
 
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
 		mat_diff[3] = 0.0f;
 
 	} else if ( scene->hasOption(Scene::DoLighting) ) {
 		// Setup light
-		Vector4 lightDir( 0.0, 0.0, 1.0, 0.0 );
 
 		if ( !frontalLight ) {
 			float decl = deg2rad( declination );
-			Vector3 v( sin( decl ), 0, cos( decl ) );
-			Matrix m; m.fromEuler( 0, 0, deg2rad( planarAngle ) );
-			v = m * v;
-			lightDir = Vector4( viewTrans.rotation * v, 0.0 );
+			Matrix m;
+			m.fromEuler( 0, 0, deg2rad( planarAngle ) );
+			lightDir = m * Vector3( std::sin( decl ), 0.0f, std::cos( decl ) );
+			cx->lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
 
-			if ( false && scene->hasVisMode(Scene::VisLightPos) ) {
-				glEnable( GL_BLEND );
-				glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-				glEnable( GL_DEPTH_TEST );
-				glDepthMask( GL_TRUE );
-				glDepthFunc( GL_LESS );
-
-				glLoadMatrix( viewTrans );
-
-				glLineWidth( Settings::lineWidthAxes );
-				glColor4f( 1.0f, 1.0f, 1.0f, 0.5f );
-
-				// Scale the distance a bit
-				float	s = scale() * 64.0f;
-				float	l = axis + s;
-				l = (l < s * 2.0f) ? axis * 1.5f : l;
-				l = (l > s * 32.0f) ? axis * 0.66f : l;
-				l = (l > s * 16.0f) ? axis * 0.75f : l;
-
-				drawDashLine( Vector3( 0, 0, 0 ), v * l, 30 );
-				drawSphere( v * l, axis / 10 );
-				glDisable( GL_BLEND );
-			}
+			drawLightPos = scene->hasVisMode( Scene::VisLightPos );
 		} else {
 			// environment map rotation around the Z axis
-			lightDir[3] = planarAngle / 180.0f;
+			cx->lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, planarAngle / 180.0f );
 		}
 
 		mat_amb = FloatVector4( ambient );
@@ -600,28 +551,61 @@ void GLView::paintGL()
 		mat_diff = c;
 		mat_diff[3] = brightnessScale;
 
-		scene->renderer->lightSourcePosition[0] = FloatVector4( lightDir );
-
 	} else {
 		mat_amb.blendValues( FloatVector4( 0.5f ), 0x07 );
 		mat_diff = FloatVector4( 1.0f );
 	}
 
-	scene->renderer->viewMatrix = scene->view.rotation;
-	scene->renderer->lightSourceAmbient = mat_amb;
-	scene->renderer->lightSourceDiffuse[0] = mat_diff;
+	cx->viewMatrix = scene->view.rotation;
+	cx->lightSourceAmbient = mat_amb;
+	cx->lightSourceDiffuse[0] = mat_diff;
 
-	scene->renderer->setGlobalUniforms();
+	cx->setGlobalUniforms();
+
+	cx->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
 
 	if ( scene->hasOption(Scene::DoMultisampling) )
 		glEnable( GL_MULTISAMPLE );
 
+	if ( drawLightPos ) {
+		glEnable( GL_DEPTH_TEST );
+		glDepthMask( GL_TRUE );
+		glDepthFunc( GL_LESS );
+
+		// Scale the distance a bit
+		float	s = scale() * 64.0f;
+		float	l = axis + s;
+		l = (l < s * 2.0f) ? axis * 1.5f : l;
+		l = (l > s * 32.0f) ? axis * 0.66f : l;
+		l = (l > s * 16.0f) ? axis * 0.75f : l;
+		lightDir = lightDir * l;
+
+		scene->setGLColor( FloatVector4( 1.0f ) );
+		scene->setGLLineParams( Settings::lineWidthAxes * 0.5f );
+		scene->setModelViewMatrix( viewTrans, Transform( Vector3(), lightDir ), 2 );
+		scene->drawDashLine( Vector3(), Vector3( 1.0f, 1.0f, 1.0f ), 30 );
+		scene->setModelViewMatrix( viewTrans, Transform( lightDir, axis / 10.0f ), 2 );
+		scene->drawSphere( Vector3(), 1.0f );
+	}
+
 #ifndef QT_NO_DEBUG
+	if ( debugMode == DbgBounds ) {
+		// Debug scene bounds
+		glEnable( GL_DEPTH_TEST );
+		glDepthMask( GL_TRUE );
+		glDepthFunc( GL_LESS );
+		BoundSphere bs = scene->bounds();
+		bs |= BoundSphere( Vector3(), axis );
+		scene->setModelViewMatrix( viewTrans, Transform( bs.center, bs.radius ), 2 );
+		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.25f );
+		scene->setGLLineParams( Settings::lineWidthAxes );
+		scene->drawSphere( Vector3(), 1.0f );
+	}
+
 	// Color Key debug
 	if ( debugMode == DbgColorPicker ) {
 		glDisable( GL_MULTISAMPLE );
 		glDisable( GL_LINE_SMOOTH );
-		glDisable( GL_BLEND );
 		glDisable( GL_DITHER );
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LEQUAL );
@@ -633,42 +617,41 @@ void GLView::paintGL()
 #endif
 
 	// Draw the model
+	glDisable( GL_BLEND );
 	scene->draw();
 
-	if ( false && scene->hasOption(Scene::ShowAxes) ) {
+	if ( scene->hasOption(Scene::ShowAxes) ) {
 		// Resize viewport to small corner of screen
 		int axesSize = int( std::min< double >( 0.1 * pixelWidth, 125.0 * devicePixelRatioF() ) + 0.5 );
-		scene->renderer->setViewport( 0, 0, axesSize, axesSize );
+		cx->setViewport( 0, 0, axesSize, axesSize );
 
-		Renderer::Program *	prog = scene->renderer->useProgram( "lines.prog" );
-
-		if ( prog ) {
-			// Square frustum
-			auto nr = 1.0;
-			auto fr = 250.0;
-			GLdouble h2 = tan( cfg.fov / 360 * M_PI ) * nr;
-			GLdouble w2 = h2;
+		// Square frustum
+		auto nr = 1.0;
+		auto fr = 250.0;
+		GLdouble h2 = tan( cfg.fov / 360 * M_PI ) * nr;
+		GLdouble w2 = h2;
+		for ( auto prog = scene->useProgram( "lines.prog" ); prog; prog = nullptr ) {
 			prog->uni4m( "projectionMatrix", Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr ) );
-
-			Transform	viewTransTmp = viewTrans;
-			// Zoom out slightly
-			viewTransTmp.translation = { 0, 0, -150.0 };
-			prog->uni4m( "modelViewMatrix", viewTransTmp.toMatrix4() );
-
-			// Find direction of axes
-			auto vtr = viewTransTmp.rotation;
-			QVector<float> axesDots = { vtr( 2, 0 ), vtr( 2, 1 ), vtr( 2, 2 ) };
-
-			drawAxesOverlay( { 0, 0, 0 }, 50.0, sortAxes( axesDots ) );
-
-			scene->renderer->stopProgram();
+			// update viewport dimensions
+			prog->uni4fv( "lightSourceDiffuse", cx->lightSourceDiffuse, 3 );
 		}
 
+		Transform	viewTransTmp = viewTrans;
+		// Zoom out slightly
+		viewTransTmp.translation = { 0.0f, 0.0f, -150.0f };
+
+		// Find direction of axes
+		auto vtr = viewTransTmp.rotation;
+		Vector3 axesDots( vtr( 2, 0 ), vtr( 2, 1 ), vtr( 2, 2 ) );
+
+		scene->drawAxesOverlay( viewTransTmp, { 0.0f, 0.0f, 0.0f }, 50.0f, axesDots );
+
 		// Restore viewport size
-		scene->renderer->setViewport( 0, 0, pixelWidth, pixelHeight );
+		cx->setViewport( 0, 0, pixelWidth, pixelHeight );
 	}
 
-	scene->renderer->shrinkCache();
+	cx->stopProgram();
+	cx->shrinkCache();
 
 	// Check for errors
 	GLenum err;

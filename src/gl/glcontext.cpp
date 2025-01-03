@@ -993,6 +993,24 @@ void NifSkopeOpenGLContext::setGlobalUniforms()
 	fn->glUseProgram( 0 );
 }
 
+void NifSkopeOpenGLContext::setDefaultVertexAttribs( std::uint64_t attrMask, const float * const * attrData )
+{
+	fn->glBindVertexArray( 0 );
+	for ( size_t i = 0; attrMask; i++, attrMask = attrMask >> 4 ) {
+		size_t	n = attrMask & 15;
+		if ( !n )
+			continue;
+		if ( n >= 4 )
+			vertexAttrib4fv( GLuint( i ), attrData[i] );
+		else if ( n == 3 )
+			vertexAttrib3fv( GLuint( i ), attrData[i] );
+		else if ( n == 2 )
+			vertexAttrib2fv( GLuint( i ), attrData[i] );
+		else
+			vertexAttrib1f( GLuint( i ), attrData[i][0] );
+	}
+}
+
 void NifSkopeOpenGLContext::bindShape(
 	unsigned int numVerts, std::uint64_t attrMask, size_t elementDataSize,
 	const float * const * attrData, const void * elementData )
@@ -1120,9 +1138,7 @@ inline std::uint32_t NifSkopeOpenGLContext::ShapeDataHash::hashFunction() const
 
 size_t NifSkopeOpenGLContext::ShapeDataHash::getBufferDataSize() const
 {
-	std::uint64_t	tmp = ( ~attrMask >> 3 ) & 0x1111111111111111ULL;
-	tmp = ( tmp * 7U ) & attrMask;
-	tmp = ( tmp + ( tmp >> 4 ) ) & 0x0F0F0F0F0F0F0F0FULL;
+	std::uint64_t	tmp = ( attrMask & 0x0F0F0F0F0F0F0F0FULL ) + ( ( attrMask >> 4 ) & 0x0F0F0F0F0F0F0F0FULL );
 	tmp = tmp + ( tmp >> 8 );
 	tmp = tmp + ( tmp >> 16 );
 	tmp = tmp + ( tmp >> 32 );
@@ -1149,27 +1165,14 @@ NifSkopeOpenGLContext::ShapeData::ShapeData(
 	f.glBindBuffer( GL_ARRAY_BUFFER, vbo );
 	f.glBufferData( GL_ARRAY_BUFFER, GLsizeiptr( attrDataSize ), (void *) 0, GL_STATIC_DRAW );
 	for ( size_t i = 0; attrMask; i++, attrMask = attrMask >> 4 ) {
-		size_t	nBytes = attrMask & 7;
-		if ( !nBytes )
+		size_t	n = attrMask & 15;
+		if ( !n )
 			continue;
-		nBytes = nBytes * sizeof( float );
-		if ( attrMask & 8 ) {
-			f.glDisableVertexAttribArray( GLuint( i ) );
-			if ( ( attrMask & 7 ) >= 4 )
-				context.vertexAttrib4fv( GLuint( i ), attrData[i] );
-			else if ( ( attrMask & 7 ) == 3 )
-				context.vertexAttrib3fv( GLuint( i ), attrData[i] );
-			else if ( ( attrMask & 7 ) == 2 )
-				context.vertexAttrib2fv( GLuint( i ), attrData[i] );
-			else
-				context.vertexAttrib1f( GLuint( i ), attrData[i][0] );
-		} else {
-			nBytes = nBytes * vertCnt;
-			f.glBufferSubData( GL_ARRAY_BUFFER, GLintptr( attrOffset ), GLsizeiptr( nBytes ), attrData[i] );
-			f.glVertexAttribPointer( GLuint( i ), GLint( attrMask & 7 ), GL_FLOAT, GL_FALSE, 0, (void *) attrOffset );
-			f.glEnableVertexAttribArray( GLuint( i ) );
-			attrOffset = attrOffset + nBytes;
-		}
+		size_t	nBytes = n * sizeof( float ) * vertCnt;
+		f.glBufferSubData( GL_ARRAY_BUFFER, GLintptr( attrOffset ), GLsizeiptr( nBytes ), attrData[i] );
+		f.glVertexAttribPointer( GLuint( i ), GLint( n ), GL_FLOAT, GL_FALSE, 0, (void *) attrOffset );
+		f.glEnableVertexAttribArray( GLuint( i ) );
+		attrOffset = attrOffset + nBytes;
 	}
 
 	if ( elementDataSize ) [[likely]] {
@@ -1234,23 +1237,18 @@ NifSkopeOpenGLContext::ShapeDataHash::ShapeDataHash(
 	xxhState = &xxhStateBuf;
 #endif
 	XXH3_128bits_reset_withSecret( xxhState, shapeDataHashSecret.buf, sizeof( shapeDataHashSecret.buf ) );
-	for ( std::uint32_t i = 0; true; i++, attrModeMask = attrModeMask >> 4 ) {
-		const void *	p;
-		size_t	nBytes;
-		if ( !attrModeMask ) {
-			nBytes = elementDataSize;
-			p = elementData;
-		} else if ( ( nBytes = attrModeMask & 7 ) != 0 ) {
-			nBytes = nBytes * sizeof( float );
-			if ( !( attrModeMask & 8 ) )
-				nBytes = nBytes * vertCnt;
-			p = attrData[i];
-		}
-		if ( nBytes > 0 )
-			XXH3_128bits_update( xxhState, p, nBytes );
-		if ( !attrModeMask )
-			break;
+	if ( !vertCnt ) [[unlikely]]
+		attrModeMask = 0;
+	for ( std::uint32_t i = 0; attrModeMask; i++, attrModeMask = attrModeMask >> 4 ) {
+		size_t	nBytes = attrModeMask & 15;
+		if ( !nBytes )
+			continue;
+		nBytes = nBytes * sizeof( float ) * vertCnt;
+		const void *	p = attrData[i];
+		XXH3_128bits_update( xxhState, p, nBytes );
 	}
+	if ( elementDataSize > 0 ) [[likely]]
+		XXH3_128bits_update( xxhState, elementData, elementDataSize );
 	XXH128_hash_t	xxhResult = XXH3_128bits_digest( xxhState );
 	h[0] = xxhResult.low64;
 	h[1] = xxhResult.high64;

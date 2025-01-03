@@ -430,8 +430,9 @@ void BSShape::drawSelection() const
 		float pbvR = nif->get<float>( nif->getIndex( iBSphere, 1, 2 ) );
 
 		if ( pbvR > 0.0 ) {
-			glColor4f( 0, 1, 0, 0.33f );
-			drawSphereSimple( pbvC, pbvR, 72 );
+			scene->setGLColor( 0.0f, 1.0f, 0.0f, 0.33f );
+			scene->drawSphereSimple( pbvC, pbvR, 72 );
+			bindShape();
 		}
 
 		glPopMatrix();
@@ -455,8 +456,9 @@ void BSShape::drawSelection() const
 			glMultMatrix( scene->view * t );
 
 			if ( bvR > 0.0 ) {
-				glColor4f( 1, 1, 1, 0.33f );
-				drawSphereSimple( Vector3( 0, 0, 0 ), bvR, 72 );
+				scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
+				scene->drawSphereSimple( Vector3( 0, 0, 0 ), bvR, 72 );
+				bindShape();
 			}
 
 			glPopMatrix();

@@ -360,7 +360,7 @@ void UVWidget::paintGL()
 
 	glEnable( GL_BLEND );
 
-	glLineWidth( GLView::Settings::lineWidthGrid1 * 0.8f );
+	glLineWidth( GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f ) );
 	glBegin( GL_LINES );
 	int glGridMinX = qRound( qMin( glViewRect[0], glViewRect[1] ) / glGridD );
 	int glGridMaxX = qRound( qMax( glViewRect[0], glViewRect[1] ) / glGridD );
@@ -371,17 +371,17 @@ void UVWidget::paintGL()
 		GLdouble glGridPos = glGridD * i;
 
 		if ( ( i % ( GRIDSEGS * GRIDSEGS ) ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid1 * 1.4f );
+			glLineWidth( GLView::Settings::lineWidthGrid );
 			glColor4f( 1.0f, 1.0f, 1.0f, 0.4f );
 		} else if ( zoom > ( GRIDSEGS * GRIDSEGS / 2.0 ) ) {
 			continue;
 		} else if ( ( i % GRIDSEGS ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid1 * 1.2f );
+			glLineWidth( GLView::Settings::lineWidthGrid * ( 6.0f / 7.0f ) );
 			glColor4f( 1.0f, 1.0f, 1.0f, 0.2f );
 		} else if ( zoom > ( GRIDSEGS / 2.0 ) ) {
 			continue;
 		} else {
-			glLineWidth( GLView::Settings::lineWidthGrid1 * 0.8f );
+			glLineWidth( GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f ) );
 			glColor4f( 1.0f, 1.0f, 1.0f, 0.1f );
 		}
 
@@ -393,17 +393,17 @@ void UVWidget::paintGL()
 		GLdouble glGridPos = glGridD * i;
 
 		if ( ( i % ( GRIDSEGS * GRIDSEGS ) ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid1 * 1.4f );
+			glLineWidth( GLView::Settings::lineWidthGrid );
 			glColor4f( 1.0f, 1.0f, 1.0f, 0.4f );
 		} else if ( zoom > ( GRIDSEGS * GRIDSEGS / 2.0 ) ) {
 			continue;
 		} else if ( ( i % GRIDSEGS ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid1 * 1.2f );
+			glLineWidth( GLView::Settings::lineWidthGrid * ( 6.0f / 7.0f ) );
 			glColor4f( 1.0f, 1.0f, 1.0f, 0.2f );
 		} else if ( zoom > ( GRIDSEGS / 2.0 ) ) {
 			continue;
 		} else {
-			glLineWidth( GLView::Settings::lineWidthGrid1 * 0.8f );
+			glLineWidth( GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f ) );
 			glColor4f( 1.0f, 1.0f, 1.0f, 0.1f );
 		}
 

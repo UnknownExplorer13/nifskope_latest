@@ -41,6 +41,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "gl/glparticles.h"
 #include "gl/gltex.h"
 #include "model/nifmodel.h"
+#include "glview.h"
+#include "nifskope.h"
 
 #include <QAction>
 #include <QOpenGLContext>
@@ -95,6 +97,11 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 		options |= DoErrorColor;
 
 	settings.endGroup();
+
+	gridColor = settings.value( "Settings/Render/Colors/Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>();
+
+	currentGLColor = FloatVector4( 0.0f );
+	currentGLLineParams = FloatVector4( 1.0f, 0.0f, 0.0f, 1.0f );
 }
 
 Scene::~Scene()
@@ -362,6 +369,7 @@ void Scene::drawShapes()
 		}
 
 		renderer->drawSkyBox( this );
+		drawGrid();
 
 		if ( secondPass.list().count() > 0 )
 			drawSelection(); // for transparency pass
@@ -377,7 +385,57 @@ void Scene::drawShapes()
 		}
 
 		renderer->drawSkyBox( this );
+		drawGrid();
 	}
+}
+
+void Scene::drawGrid()
+{
+	// Draw the grid
+	NifSkope *	w;
+	if ( !hasOption(ShowGrid) || !nifModel || ( w = dynamic_cast< NifSkope * >( nifModel->getWindow() ) ) == nullptr )
+		return;
+	GLView *	v = w->getGLView();
+	if ( !v )
+		return;
+
+	glDisable( GL_FRAMEBUFFER_SRGB );
+	glEnable( GL_DEPTH_TEST );
+	glDepthMask( GL_TRUE );
+	glDepthFunc( GL_LESS );
+
+	FloatVector4	c0 = FloatVector4( Color4( gridColor ) );
+	FloatVector4	c1( 1.0f, 0.0f, 0.0f, 1.0f );
+	FloatVector4	c2( 0.0f, 1.0f, 0.0f, 1.0f );
+
+	// Keep the grid "grounded" regardless of Up Axis
+	Transform gridTrans = view;
+	if ( v->cfg.upAxis != GLView::ZAxis ) {
+		static const float	axisRotation[27] = {
+			1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,		// Z
+			0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,		// Y
+			0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f		// X
+		};
+		const float *	ap = axisRotation;
+		if ( v->cfg.upAxis == GLView::YAxis ) {
+			ap = ap + 9;
+			c2 = c1;
+			c1.shuffleValues( 0xC6 );	// 2, 1, 0, 3
+		} else if ( v->cfg.upAxis == GLView::XAxis ) {
+			ap = ap + 18;
+			c1 = c2;
+			c2.shuffleValues( 0xD8 );	// 0, 2, 1, 3
+		}
+		gridTrans.rotation = gridTrans.rotation * Matrix( ap );
+	}
+	c1 = ( ( c1 + c0 ) * 0.5f ).blendValues( c0, 0x08 );
+	c2 = ( ( c2 + c0 ) * 0.5f ).blendValues( c0, 0x08 );
+
+	setModelViewMatrix( gridTrans, 2 );
+
+	// TODO: Configurable grid in Settings
+	// 1024 game units, major lines every 128, minor lines every 64
+	drawGrid( ( nifModel->getBSVersion() >= 170 ? 16.0f : 1024.0f ), 16, 2, c0, c1, c2 );
 }
 
 void Scene::drawNodes()

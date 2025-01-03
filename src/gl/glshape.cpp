@@ -285,17 +285,18 @@ void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
 
 void Shape::drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const
 {
-	// TODO: implement this
-	(void) sph;
-	(void) color;
+	scene->setGLColor( color );
+	scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
+	scene->setModelViewMatrix( viewTrans(), Transform( sph.center, sph.radius ), 2 );
+	scene->drawSphereSimple( Vector3(), 1.0f, 72 );
 }
 
 void Shape::drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const
 {
-	// TODO: implement this
-	(void) boundsCenter;
-	(void) boundsDims;
-	(void) color;
+	scene->setGLColor( color );
+	scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
+	scene->setModelViewMatrix( viewTrans(), Transform( boundsCenter, boundsDims ), 2 );
+	scene->drawBox( Vector3( -1.0f, -1.0f, -1.0f ), Vector3( 1.0f, 1.0f, 1.0f ) );
 }
 
 void Shape::setController( const NifModel * nif, const QModelIndex & iController )
@@ -352,14 +353,15 @@ void Shape::boneSphere( const NifModel * nif, const QModelIndex & index ) const
 		return;
 
 	Transform boneT = Transform( nif, index );
-	Transform t = scene->hasOption(Scene::DoSkinning) ? viewTrans() : Transform();
-	t = t * skeletonTrans * bone->localTrans( 0 ) * boneT;
+	Transform t = bone->localTrans( 0 ) * boneT;
 
 	auto bSphere = BoundSphere( nif, index );
 	if ( bSphere.radius > 0.0 ) {
-		glColor4f( 1, 1, 1, 0.33f );
 		auto pos = boneT.rotation.inverted() * (bSphere.center - boneT.translation);
-		drawSphereSimple( t * pos, bSphere.radius, 36 );
+		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
+		scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
+		scene->setModelViewMatrix( viewTrans(), skeletonTrans, t, 2 );
+		scene->drawSphereSimple( pos, bSphere.radius, 36 );
 	}
 }
 
@@ -483,54 +485,42 @@ bool Shape::bindShape() const
 	if ( !( numVerts > 0 && numTriangles > 0 ) ) [[unlikely]]
 		return false;
 
-	static const float	defaultAttrs[12] = { 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f };
-	static const float *	defaultAttrPtrs[16] = {
-		// position, color, normal, tangent
-		&( defaultAttrs[4] ), &( defaultAttrs[0] ), &( defaultAttrs[6] ), &( defaultAttrs[9] ),
-		// bitangent, weights0, weights1, coord0
-		&( defaultAttrs[3] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ),
-		// coord1..coord8
-		&( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ),
-		&( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] ), &( defaultAttrs[4] )
-	};
 	const float *	vertexAttrs[16];
-	std::memcpy( vertexAttrs, defaultAttrPtrs, sizeof( float * ) * 16 );
-	std::uint64_t	attrModeMask = 0xAAAAAAAAACCBBBC3ULL;
-
 	vertexAttrs[0] = &( verts.constFirst()[0] );
+	std::uint64_t	attrModeMask = 3U;
 
 	if ( colors.size() >= numVerts ) {
 		vertexAttrs[1] = &( colors.constFirst()[0] );
-		attrModeMask &= ~0x00000080ULL;
+		attrModeMask |= 0x00000040ULL;
 	}
 
 	if ( norms.size() >= numVerts ) [[likely]] {
 		vertexAttrs[2] = &( norms.constFirst()[0] );
-		attrModeMask &= ~0x00000800ULL;
+		attrModeMask |= 0x00000300ULL;
 	}
 	if ( tangents.size() >= numVerts ) [[likely]] {
 		vertexAttrs[3] = &( tangents.constFirst()[0] );
-		attrModeMask &= ~0x00008000ULL;
+		attrModeMask |= 0x00003000ULL;
 	}
 	if ( bitangents.size() >= numVerts ) [[likely]] {
 		vertexAttrs[4] = &( bitangents.constFirst()[0] );
-		attrModeMask &= ~0x00080000ULL;
+		attrModeMask |= 0x00030000ULL;
 	}
 
 	if ( boneWeights0.size() >= numVerts ) [[unlikely]] {
 		vertexAttrs[5] = &( boneWeights0.constFirst()[0] );
-		attrModeMask &= ~0x00800000ULL;
+		attrModeMask |= 0x00400000ULL;
 	}
 	if ( boneWeights1.size() >= numVerts ) [[unlikely]] {
 		vertexAttrs[6] = &( boneWeights1.constFirst()[0] );
-		attrModeMask &= ~0x08000000ULL;
+		attrModeMask |= 0x04000000ULL;
 	}
 
 	unsigned char	numUVs = (unsigned char) std::min< qsizetype >( coords.size(), 9 );
 	for ( unsigned char i = 0; i < numUVs; i++ ) {
 		if ( coords[i].size() >= numVerts ) [[likely]] {
 			vertexAttrs[i + 7] = &( coords.at( i ).constFirst()[0] );
-			attrModeMask &= ~( 0x80000000ULL << ( i << 2 ) );
+			attrModeMask |= ( 0x20000000ULL << ( i << 2 ) );
 		}
 	}
 
