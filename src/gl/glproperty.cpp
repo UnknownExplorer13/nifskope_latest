@@ -678,7 +678,6 @@ void WireframeProperty::updateImpl( const NifModel * nif, const QModelIndex & in
 void glProperty( WireframeProperty * p )
 {
 	if ( p && p->wire ) {
-		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		glLineWidth( GLView::Settings::lineWidthWireframe * 0.625f );
 	} else {
 		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );

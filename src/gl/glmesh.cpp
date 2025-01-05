@@ -1038,12 +1038,6 @@ void Mesh::drawSelection() const
 		}
 	}
 
-	glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
-
-	// TODO: Reenable as an alternative to MSAA when MSAA is not supported
-	//glEnable( GL_LINE_SMOOTH );
-	//glHint( GL_LINE_SMOOTH_HINT, GL_NICEST );
-
 	if ( n == "Normals" || n == "TSpace" ) {
 		float normalScale = bounds().radius / 20;
 
@@ -1161,7 +1155,6 @@ void Mesh::drawSelection() const
 			glVertex( verts.value( tri.v3() ) );
 			//glVertex( verts.value( tri.v1() ) );
 			glEnd();
-			glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 		}
 	}
 

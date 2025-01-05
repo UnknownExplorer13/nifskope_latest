@@ -1659,16 +1659,12 @@ void Node::drawFurn()
 		glDepthMask( GL_FALSE );
 		glDepthFunc( GL_LEQUAL );
 		glDisable( GL_CULL_FACE );
-		glDisable( GL_BLEND );
-		glColor4f( 1, 1, 1, 1 );
-		glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
+		scene->setGLColor( 1.0f, 1.0f, 1.0f, 1.0f );
 	}
 
-	glLineWidth( GLView::Settings::lineWidthWireframe * 0.625f );
+	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe * 0.625f );
 
-	glPushMatrix();
-
-	glMultMatrix( viewTrans() );
+	scene->loadModelViewMatrix( viewTrans() );
 
 	for ( int p = 0; p < nif->rowCount( iExtraDataList ); p++ ) {
 		// DONE: never seen Furn in nifs, so there may be a need of a fix here later - saw one, fixed a bug
@@ -1686,15 +1682,13 @@ void Node::drawFurn()
 			QModelIndex iPosition = nif->getIndex( iPositions, j );
 
 			if ( scene->currentIndex == iPosition )
-				glHighlightColor();
+				scene->setGLColor( cfg.highlight );
 			else
-				glNormalColor();
+				scene->setGLColor( cfg.wireframe );
 
 			drawFurnitureMarker( nif, iPosition );
 		}
 	}
-
-	glPopMatrix();
 }
 
 void Node::drawShapes( NodeList * secondPass )
