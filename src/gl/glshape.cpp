@@ -256,7 +256,7 @@ void Shape::drawWireframe( FloatVector4 color ) const
 	setUniforms( prog );
 	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( color ) );
 	prog->uni1i( "selectionParam", -1 );
-	prog->uni3f( "lineParams", GLView::Settings::lineWidthWireframe, 0.0f, 0.0f );
+	prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe );
 
 	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 }
@@ -286,17 +286,17 @@ void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
 void Shape::drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const
 {
 	scene->setGLColor( color );
-	scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
-	scene->setModelViewMatrix( viewTrans(), Transform( sph.center, sph.radius ), 2 );
-	scene->drawSphereSimple( Vector3(), 1.0f, 72 );
+	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
+	scene->loadModelViewMatrix( viewTrans() );
+	scene->drawSphereSimple( sph.center, sph.radius, 72, 4 );
 }
 
 void Shape::drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const
 {
 	scene->setGLColor( color );
-	scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
-	scene->setModelViewMatrix( viewTrans(), Transform( boundsCenter, boundsDims ), 2 );
-	scene->drawBox( Vector3( -1.0f, -1.0f, -1.0f ), Vector3( 1.0f, 1.0f, 1.0f ) );
+	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
+	scene->loadModelViewMatrix( viewTrans() );
+	scene->drawBox( boundsCenter - boundsDims, boundsCenter + boundsDims );
 }
 
 void Shape::setController( const NifModel * nif, const QModelIndex & iController )
@@ -359,8 +359,8 @@ void Shape::boneSphere( const NifModel * nif, const QModelIndex & index ) const
 	if ( bSphere.radius > 0.0 ) {
 		auto pos = boneT.rotation.inverted() * (bSphere.center - boneT.translation);
 		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
-		scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
-		scene->setModelViewMatrix( viewTrans(), skeletonTrans, t, 2 );
+		scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
+		scene->loadModelViewMatrix( viewTrans().toMatrix4() * skeletonTrans * t );
 		scene->drawSphereSimple( pos, bSphere.radius, 36 );
 	}
 }
@@ -516,13 +516,17 @@ bool Shape::bindShape() const
 		attrModeMask |= 0x04000000ULL;
 	}
 
-	unsigned char	numUVs = (unsigned char) std::min< qsizetype >( coords.size(), 9 );
-	for ( unsigned char i = 0; i < numUVs; i++ ) {
-		if ( coords[i].size() >= numVerts ) [[likely]] {
-			vertexAttrs[i + 7] = &( coords.at( i ).constFirst()[0] );
-			attrModeMask |= ( 0x20000000ULL << ( i << 2 ) );
+	unsigned char	numUVs = (unsigned char) std::min< qsizetype >( std::max< qsizetype >( coords.size(), 0 ), 9 );
+	std::uint64_t	tmp = 0;
+	for ( unsigned char i = numUVs; i-- > 0; ) {
+		tmp = tmp << 4;
+		const auto &	c = coords.at( i );
+		if ( c.size() >= numVerts ) [[likely]] {
+			vertexAttrs[i + 7] = &( c.constFirst()[0] );
+			tmp |= 0x20000000ULL;
 		}
 	}
+	attrModeMask |= tmp;
 
 	size_t	elementDataSize = size_t( numTriangles ) * sizeof( Triangle );
 	if ( !( dataHash.attrMask && numVerts == dataHash.numVerts && elementDataSize == dataHash.elementBytes ) ) {

@@ -216,10 +216,7 @@ void BSMesh::drawSelection() const
 						t.scale = 1.0f / t.scale;
 						sph.radius *= t.scale;
 						sph.center = t * sph.center;
-						scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
-						scene->setGLLineParams( GLView::Settings::lineWidthWireframe );
-						scene->setModelViewMatrix( viewTrans() );
-						scene->drawSphereSimple( sph.center, sph.radius, 72 );
+						drawBoundingSphere( sph, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
 						bindShape();
 					}
 				}

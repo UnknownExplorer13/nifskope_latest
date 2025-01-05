@@ -377,7 +377,6 @@ void BSShape::drawSelection() const
 	if ( normalScale < 0.1f )
 		normalScale = 0.1f;
 
-
 	if ( !extraData ) {
 		if ( n == "Bounding Sphere" ) {
 			auto sph = BoundSphere( nif, idx );
@@ -417,25 +416,12 @@ void BSShape::drawSelection() const
 			}
 		}
 
-		if ( !idxs.size() ) {
-			glPopMatrix();
-			return;
-		}
-
 #if 0
 		Vector3 pTrans = nif->get<Vector3>( nif->getIndex( pBlock, 1 ), "Translation" );
 #endif
-		auto iBSphere = nif->getIndex( pBlock, "Bounding Sphere" );
-		Vector3 pbvC = nif->get<Vector3>( nif->getIndex( iBSphere, 0, 2 ) );
-		float pbvR = nif->get<float>( nif->getIndex( iBSphere, 1, 2 ) );
-
-		if ( pbvR > 0.0 ) {
-			scene->setGLColor( 0.0f, 1.0f, 0.0f, 0.33f );
-			scene->drawSphereSimple( pbvC, pbvR, 72 );
-			bindShape();
-		}
-
-		glPopMatrix();
+		BoundSphere sph( nif, pBlock );
+		if ( sph.radius > 0.0f )
+			Shape::drawBoundingSphere( sph, FloatVector4( 0.0f, 1.0f, 0.0f, 0.33f ) );
 
 		for ( auto i : idxs ) {
 			// Transform compound
@@ -452,21 +438,16 @@ void BSShape::drawSelection() const
 			t.translation = bvC;
 			t.scale = scale;
 
-			glPushMatrix();
-			glMultMatrix( scene->view * t );
+			scene->loadModelViewMatrix( scene->view.toMatrix4() * t );
 
 			if ( bvR > 0.0 ) {
 				scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
 				scene->drawSphereSimple( Vector3( 0, 0, 0 ), bvR, 72 );
-				bindShape();
 			}
-
-			glPopMatrix();
 		}
-
-		glPushMatrix();
-		glMultMatrix( viewTrans() );
 	}
+
+	bindShape();
 
 	if ( n == "Vertex Data" || n == "Vertex" || n == "Vertices" ) {
 		int	s = -1;

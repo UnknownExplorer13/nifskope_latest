@@ -581,11 +581,10 @@ void GLView::paintGL()
 		lightDir = lightDir * l;
 
 		scene->setGLColor( FloatVector4( 1.0f ) );
-		scene->setGLLineParams( Settings::lineWidthAxes * 0.5f );
-		scene->setModelViewMatrix( viewTrans, Transform( Vector3(), lightDir ), 2 );
-		scene->drawDashLine( Vector3(), Vector3( 1.0f, 1.0f, 1.0f ), 30 );
-		scene->setModelViewMatrix( viewTrans, Transform( lightDir, axis / 10.0f ), 2 );
-		scene->drawSphere( Vector3(), 1.0f );
+		scene->setGLLineWidth( Settings::lineWidthAxes * 0.5f );
+		scene->loadModelViewMatrix( viewTrans );
+		scene->drawDashLine( Vector3(), lightDir, 30 );
+		scene->drawSphereSimple( lightDir, axis / 10.0f, 72, 6 );
 	}
 
 #ifndef QT_NO_DEBUG
@@ -596,10 +595,10 @@ void GLView::paintGL()
 		glDepthFunc( GL_LESS );
 		BoundSphere bs = scene->bounds();
 		bs |= BoundSphere( Vector3(), axis );
-		scene->setModelViewMatrix( viewTrans, Transform( bs.center, bs.radius ), 2 );
+		scene->loadModelViewMatrix( viewTrans );
 		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.25f );
-		scene->setGLLineParams( Settings::lineWidthAxes );
-		scene->drawSphere( Vector3(), 1.0f );
+		scene->setGLLineWidth( Settings::lineWidthAxes );
+		scene->drawSphere( bs.center, bs.radius );
 	}
 
 	// Color Key debug
@@ -636,15 +635,15 @@ void GLView::paintGL()
 			prog->uni4fv( "lightSourceDiffuse", cx->lightSourceDiffuse, 3 );
 		}
 
-		Transform	viewTransTmp = viewTrans;
 		// Zoom out slightly
-		viewTransTmp.translation = { 0.0f, 0.0f, -150.0f };
+		viewTrans.translation = { 0.0f, 0.0f, -150.0f };
+		scene->loadModelViewMatrix( viewTrans );
 
 		// Find direction of axes
-		auto vtr = viewTransTmp.rotation;
+		const auto & vtr = viewTrans.rotation;
 		Vector3 axesDots( vtr( 2, 0 ), vtr( 2, 1 ), vtr( 2, 2 ) );
 
-		scene->drawAxesOverlay( viewTransTmp, { 0.0f, 0.0f, 0.0f }, 50.0f, axesDots );
+		scene->drawAxesOverlay( { 0.0f, 0.0f, 0.0f }, 50.0f, axesDots );
 
 		// Restore viewport size
 		cx->setViewport( 0, 0, pixelWidth, pixelHeight );
@@ -813,10 +812,11 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	// Texturing, blending, dithering, lighting and smooth shading should be disabled.
 	// The FBO can be used for the drawing operations to keep the drawing operations invisible to the user.
 
-	if ( !scene->renderer )
+	auto	context = scene->renderer;
+	if ( !context )
 		return -1;
 	std::int32_t	viewport[4];
-	scene->renderer->getViewport().convertToInt32( viewport );
+	context->getViewport().convertToInt32( viewport );
 
 	// Create new FBO with multisampling disabled
 	QOpenGLFramebufferObjectFormat fboFmt;
@@ -842,12 +842,18 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
+	context->setGlobalUniforms();
+	context->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
+
 	// Rasterize the scene
 	scene->selecting = true;
 	for ( DrawFunc df : drawFunc ) {
 		(scene->*df)();
 	}
 	scene->selecting = false;
+
+	context->stopProgram();
+	context->shrinkCache();
 
 	glClearColor( savedClearColor[0], savedClearColor[1], savedClearColor[2], savedClearColor[3] );
 	glEnable( GL_DITHER );

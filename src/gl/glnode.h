@@ -163,7 +163,7 @@ protected:
 	void drawTriangleSelection( QVector<Vector3> const & verts, Triangle const & tri );
 	void drawTriangleIndex( QVector<Vector3> const & verts, Triangle const & tri, int index );
 	void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
-						Scene * scene, const float origin_color3fv[3] );
+						Scene * scene, FloatVector4 origin_color4fv, const Matrix4 & parentTransform );
 	void drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, Scene * scene );
 	void drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosition );
 

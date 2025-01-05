@@ -219,7 +219,9 @@ public:
 	QColor gridColor;
 
 	FloatVector4 currentGLColor;
-	FloatVector4 currentGLLineParams;	// line width, stipple factor, stipple pattern, point size
+	float currentGLLineWidth;
+	float currentGLPointSize;
+	Matrix4 * currentModelViewMatrix;
 
 	BoundSphere bounds() const;
 
@@ -242,41 +244,41 @@ protected:
 
 	void updateTimeBounds() const;
 
+	std::vector< FloatVector4 > vertexAttrBuf;
+	Matrix4 modelViewMatrixStack[4];
+
+	Vector3 * allocateVertexAttr( size_t numVerts, FloatVector4 ** colors = nullptr );
+
 public:
 	//! gltools.cpp interface
 	NifSkopeOpenGLContext::Program * useProgram( std::string_view name );
 	void setGLColor( const QColor & c );
-	inline void setGLColor( FloatVector4 c )
-	{
-		currentGLColor = c;
-	}
-	inline void setGLColor( float r, float g, float b, float a )
-	{
-		currentGLColor = FloatVector4( r, g, b, a );
-	}
-	inline void setGLLineParams( float lineWidth, float stippleFactor = 0.0f, int stipplePattern = 0 )
-	{
-		currentGLLineParams[0] = lineWidth;
-		currentGLLineParams[1] = stippleFactor;
-		currentGLLineParams[2] = stipplePattern;
-	}
-	inline void setGLPointSize( float pointSize )
-	{
-		currentGLLineParams[3] = pointSize;
-	}
-	// flags = 1: set matrix for selection.prog only
-	// flags = 2: set matrix for lines.prog only
-	void setModelViewMatrix( const Matrix4 & m, int flags = 0 );
-	void setModelViewMatrix( const Transform & t, int flags = 0 );
-	void setModelViewMatrix( const Transform & t1, const Transform & t2, int flags = 0 );
-	void setModelViewMatrix( const Transform & t1, const Transform & t2, const Transform & t3, int flags = 0 );
-	void drawPoint( const Vector3 & a );
+	inline void setGLColor( FloatVector4 c );
+	inline void setGLColor( float r, float g, float b, float a );
+	inline void setGLLineWidth( float lineWidth );
+	inline void setGLPointSize( float pointSize );
+	inline void loadModelViewMatrix( const Matrix4 & m );
+	inline void loadModelViewMatrix( const Transform & t );
+	inline void pushModelViewMatrix();
+	inline void popModelViewMatrix();
+	inline void multModelViewMatrix( const Matrix4 & m );
+	inline void multModelViewMatrix( const Transform & t );
+	inline void pushAndMultModelViewMatrix( const Matrix4 & m );
+	inline void pushAndMultModelViewMatrix( const Transform & t );
+	// if positions is nullptr, the currently bound vertex array is used
+	void drawPoints( const Vector3 * positions = nullptr, size_t numVerts = 1 );
 	void drawLine( const Vector3 & a, const Vector3 & b );
-	void drawLines( const float * positions, size_t numVerts, const float * colors = nullptr,
+	void drawLines( const Vector3 * positions, size_t numVerts, const FloatVector4 * colors = nullptr,
 					unsigned int elementMode = GL_LINES );
-	void drawLineStrip( const float * positions, size_t numVerts, const float * colors = nullptr );
+	void drawLineStrip( const Vector3 * positions, size_t numVerts, const FloatVector4 * colors = nullptr );
+	// glDrawArrays() is used if numElements is zero
+	// glDrawElements() is used if numElements is non-zero (elementType should be a valid type like GL_UNSIGNED_SHORT)
+	// if elementMode is zero, the mesh data is loaded and the shader is set up, but no draw function is called
+	void drawTriangles( const Vector3 * positions, size_t numVerts, const FloatVector4 * colors = nullptr,
+						bool solid = false, unsigned int elementMode = GL_TRIANGLES, size_t numElements = 0,
+						unsigned int elementType = 0, const void * elementData = nullptr );
 	void drawAxes( const Vector3 & c, float axis, bool color = true );
-	void drawAxesOverlay( const Transform & vt, const Vector3 & c, float axis, const Vector3 & axesDots );
+	void drawAxesOverlay( const Vector3 & c, float axis, const Vector3 & axesDots );
 	void drawGrid( float s, int lines, int sub, FloatVector4 color, FloatVector4 axis1Color, FloatVector4 axis2Color );
 	void drawBox( const Vector3 & a, const Vector3 & b );
 	void drawCircle( const Vector3 & c, const Vector3 & n, float r, int sd = 16 );
@@ -286,7 +288,8 @@ public:
 	void drawCone( const Vector3 & c, Vector3 n, float a, int sd = 16 );
 	void drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane,
 							float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd = 16 );
-	void drawSphereSimple( const Vector3 & c, float r, int sd = 36 );
+	// draws s2 * 2 - 1 circles
+	void drawSphereSimple( const Vector3 & c, float r, int sd = 36, int s2 = 2 );
 	void drawSphere( const Vector3 & c, float r, int sd = 8 );
 	void drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
 	void drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
@@ -306,5 +309,71 @@ public:
 Q_DECLARE_OPERATORS_FOR_FLAGS( Scene::SceneOptions )
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( Scene::VisMode )
+
+inline void Scene::setGLColor( FloatVector4 c )
+{
+	currentGLColor = c;
+}
+
+inline void Scene::setGLColor( float r, float g, float b, float a )
+{
+	currentGLColor = FloatVector4( r, g, b, a );
+}
+
+inline void Scene::setGLLineWidth( float lineWidth )
+{
+	currentGLLineWidth = lineWidth;
+}
+
+inline void Scene::setGLPointSize( float pointSize )
+{
+	currentGLPointSize = pointSize;
+}
+
+inline void Scene::loadModelViewMatrix( const Matrix4 & m )
+{
+	*currentModelViewMatrix = m;
+}
+
+inline void Scene::loadModelViewMatrix( const Transform & t )
+{
+	*currentModelViewMatrix = t.toMatrix4();
+}
+
+inline void Scene::pushModelViewMatrix()
+{
+	Matrix4 &	prvMatrix = *currentModelViewMatrix;
+	Matrix4 *	startp = modelViewMatrixStack;
+	currentModelViewMatrix = ( currentModelViewMatrix <= ( startp + 2 ) ? currentModelViewMatrix + 1 : startp );
+	*currentModelViewMatrix = prvMatrix;
+}
+
+inline void Scene::popModelViewMatrix()
+{
+	Matrix4 *	startp = modelViewMatrixStack;
+	currentModelViewMatrix = ( currentModelViewMatrix >= ( startp + 1 ) ? currentModelViewMatrix - 1 : startp + 3 );
+}
+
+inline void Scene::multModelViewMatrix( const Matrix4 & m )
+{
+	*currentModelViewMatrix = *currentModelViewMatrix * m;
+}
+
+inline void Scene::multModelViewMatrix( const Transform & t )
+{
+	*currentModelViewMatrix = *currentModelViewMatrix * t;
+}
+
+inline void Scene::pushAndMultModelViewMatrix( const Matrix4 & m )
+{
+	pushModelViewMatrix();
+	*currentModelViewMatrix = *currentModelViewMatrix * m;
+}
+
+inline void Scene::pushAndMultModelViewMatrix( const Transform & t )
+{
+	pushModelViewMatrix();
+	*currentModelViewMatrix = *currentModelViewMatrix * t;
+}
 
 #endif

@@ -101,7 +101,9 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 	gridColor = settings.value( "Settings/Render/Colors/Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>();
 
 	currentGLColor = FloatVector4( 0.0f );
-	currentGLLineParams = FloatVector4( 1.0f, 0.0f, 0.0f, 1.0f );
+	currentGLLineWidth = 1.0f;
+	currentGLPointSize = 1.0f;
+	currentModelViewMatrix = modelViewMatrixStack;
 }
 
 Scene::~Scene()
@@ -431,7 +433,7 @@ void Scene::drawGrid()
 	c1 = ( ( c1 + c0 ) * 0.5f ).blendValues( c0, 0x08 );
 	c2 = ( ( c2 + c0 ) * 0.5f ).blendValues( c0, 0x08 );
 
-	setModelViewMatrix( gridTrans, 2 );
+	loadModelViewMatrix( gridTrans );
 
 	// TODO: Configurable grid in Settings
 	// 1024 game units, major lines every 128, minor lines every 64
