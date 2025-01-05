@@ -64,9 +64,6 @@ public:
 	Renderer( QOpenGLContext * c );
 	~Renderer();
 
-	//! Set up shaders
-	bool initialize();
-
 	//! Set up shader program
 	Program * setupProgram( Shape *, Program * hint = nullptr );
 

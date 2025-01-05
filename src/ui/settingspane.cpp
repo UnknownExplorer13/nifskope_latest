@@ -385,6 +385,8 @@ SettingsRender::SettingsRender( QWidget * parent ) :
 	ui->setupUi( this );
 	SettingsDialog::registerPage( parent, ui->name->text() );
 
+	connect( ui->btnDetectMSAA, &QPushButton::clicked, this, &SettingsRender::detectMSAAMaxSamples );
+
 	auto color = [this]( const QString & str, ColorWheel * w, ColorLineEdit * e, const QColor & color ) {
 		e->setWheel( w, str );
 		w->setColor( color );
@@ -494,6 +496,24 @@ void SettingsRender::selectSTFCubeMap()
 {
 	if ( GLView::selectPBRCubeMapForGame( 172 ) )
 		modifyPane();
+}
+
+void SettingsRender::detectMSAAMaxSamples()
+{
+	GLint	maxSamples = -1;
+	GLint	maxSamplesI = -1;
+	glGetIntegerv( GL_MAX_SAMPLES, &maxSamples );
+	glGetIntegerv( GL_MAX_INTEGER_SAMPLES, &maxSamplesI );
+	if ( maxSamples <= 0 || ( maxSamplesI > 0 && maxSamplesI < maxSamples ) )
+		maxSamples = maxSamplesI;
+	if ( maxSamples <= 0 )
+		return;
+
+	int	n = std::min< int >( std::bit_width( (unsigned int) maxSamples ) - 1, 4 );
+	if ( n != ui->msaaSamples->currentIndex() ) {
+		ui->msaaSamples->setCurrentIndex( n );
+		modifyPane();
+	}
 }
 
 /*

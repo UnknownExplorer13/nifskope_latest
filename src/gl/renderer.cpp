@@ -70,16 +70,10 @@ static const QString grayCube = "#FF555555c";
 static const QString pbr_lut_sf = "#sfpbr.dds";
 
 
-bool Renderer::initialize()
-{
-	return true;
-}
-
 Renderer::Renderer( QOpenGLContext * c )
 	: NifSkopeOpenGLContext( c )
 {
 	updateSettings();
-	updateShaders();
 
 	connect( NifSkope::getOptions(), &SettingsDialog::saveSettings, this, &Renderer::updateSettings );
 }

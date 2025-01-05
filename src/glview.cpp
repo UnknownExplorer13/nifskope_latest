@@ -93,14 +93,7 @@ GLView::GLView( QWindow * p )
 	: QOpenGLWindow( QOpenGLWindow::NoPartialUpdate, p )
 {
 	QSettings settings;
-	int	aa = settings.value( "Settings/Render/General/Antialiasing", 4 ).toInt();
-#ifdef Q_OS_LINUX
-	// work around issues with MSAA on Linux
-	if ( aa > 2 && !settings.value( "Settings/Render/General/Disable MSAA Limit", false ).toBool() ) {
-		aa = 2;
-		settings.setValue( "Settings/Render/General/Antialiasing", QVariant(aa) );
-	}
-#endif
+	int	aa = settings.value( "Settings/Render/General/Msaa Samples", 2 ).toInt();
 	aa = std::min< int >( std::max< int >( aa, 0 ), 4 );
 
 	QSurfaceFormat	fmt;
@@ -352,28 +345,15 @@ void GLView::initializeGL()
 	glFuncs->initializeOpenGLFunctions();
 	scene->setOpenGLContext( glContext );
 	textures->setOpenGLContext( scene->renderer );
-
-	GLenum err;
-
-	if ( scene->hasOption(Scene::DoMultisampling) ) {
-		if ( !glContext->hasExtension( "GL_EXT_framebuffer_multisample" ) ) {
-			scene->options &= ~Scene::DoMultisampling;
-			//qDebug() << "System does not support multisampling";
-		} /* else {
-			GLint maxSamples;
-			glGetIntegerv( GL_MAX_SAMPLES, &maxSamples );
-			qDebug() << "Max samples:" << maxSamples;
-		}*/
-	}
-
-	if ( scene->renderer->initialize() )
-		updateShaders();
+	updateShaders();		// should be called after TexCache is initialized
 
 	// Initial viewport values
 	//	Made viewport and aspect member variables.
 	//	They were being updated every single frame instead of only when resizing.
 	//glGetIntegerv( GL_VIEWPORT, viewport );
 	aspect = (GLdouble)width() / (GLdouble)height();
+
+	GLenum err;
 
 	// Check for errors
 	while ( ( err = glGetError() ) != GL_NO_ERROR )
