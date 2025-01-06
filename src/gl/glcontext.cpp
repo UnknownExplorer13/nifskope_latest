@@ -236,7 +236,7 @@ void NifSkopeOpenGLContext::ConditionGroup::addCondition( Condition * c )
 }
 
 NifSkopeOpenGLContext::Shader::Shader( const std::string_view & n, unsigned int t, GLFunctions * fn )
-	: f( fn ), name( n ), id( 0 ), status( false ), isProgram( !t )
+	: f( fn ), name( n ), id( 0 ), status( false ), isProgram( !t ), maxNumBones( 100 )
 {
 	if ( t )
 		id = f->glCreateShader( t );
@@ -340,13 +340,15 @@ bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 	{
 		QByteArray	data = loadShaderFile( filepath );
 
-		qsizetype	n = data.indexOf( "SF_NUM_TEXTURE_UNITS" );
+		QLatin1StringView	macroName( name.ends_with( "vert" ) ? "MAX_NUM_BONES" : "NUM_TEXTURE_UNITS" );
+		int	macroValue = ( name.ends_with( "vert" ) ? int( maxNumBones ) : TexCache::num_texture_units - 2 );
+		qsizetype	n = data.indexOf( macroName );
 		if ( n >= 0 )
-			data.replace( n, 20, QByteArray::number( TexCache::num_texture_units - 2 ) );
+			data.replace( n, macroName.length(), QByteArray::number( macroValue ) );
 
 		const char * src = data.constData();
 
-		f->glShaderSource( id, 1, &src, 0 );
+		f->glShaderSource( id, 1, &src, (GLint *) 0 );
 		f->glCompileShader( id );
 
 		GLint result;
@@ -909,7 +911,7 @@ void NifSkopeOpenGLContext::rehashShaders()
 	shaderHashMask = m;
 }
 
-void NifSkopeOpenGLContext::updateShaders()
+void NifSkopeOpenGLContext::updateShaders( int maxNumBones )
 {
 	releaseShaders();
 
@@ -925,8 +927,11 @@ void NifSkopeOpenGLContext::updateShaders()
 
 	for ( const QString & name : dir.entryList() ) {
 		Shader *	shader = createShader( name );
-		if ( shader && !shader->isProgram )
-			shader->load( dir.filePath( name ) );
+		if ( shader ) {
+			shader->maxNumBones = std::uint16_t( maxNumBones );
+			if ( !shader->isProgram )
+				shader->load( dir.filePath( name ) );
+		}
 	}
 
 	for ( size_t i = 0; i <= shaderHashMask; i++ ) {

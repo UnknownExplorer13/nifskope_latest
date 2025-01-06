@@ -17,40 +17,21 @@ uniform vec4 lightSourceAmbient;		// A = tone mapping control (1.0 = full tone m
 
 uniform vec4 vertexColorOverride;	// components greater than zero replace the vertex color
 
-uniform int numBones;
-uniform mat4x3 boneTransforms[100];
-
 layout ( location = 0 ) in vec3	vertexPosition;
 layout ( location = 1 ) in vec4	vertexColor;
 layout ( location = 5 ) in vec4	boneWeights0;
 layout ( location = 6 ) in vec4	boneWeights1;
 layout ( location = 7 ) in vec2	multiTexCoord0;
 
+#define BT_POSITION_ONLY 1
+#include "bonetransform.glsl"
+
 void main()
 {
 	vec4	v = vec4( vertexPosition, 1.0 );
 
-	if ( numBones > 0 ) {
-		vec3	vTmp = vec3( 0.0 );
-		float	wSum = 0.0;
-		for ( int i = 0; i < 8; i++ ) {
-			float	bw;
-			if ( i < 4 )
-				bw = boneWeights0[i];
-			else
-				bw = boneWeights1[i & 3];
-			if ( bw > 0.0 ) {
-				int	bone = int( bw );
-				if ( bone >= numBones )
-					continue;
-				float	w = fract( bw );
-				vTmp += boneTransforms[bone] * v * w;
-				wSum += w;
-			}
-		}
-		if ( wSum > 0.0 )
-			v = vec4( vTmp / wSum, 1.0 );
-	}
+	if ( numBones > 0 )
+		boneTransform( v );
 
 	v = modelViewMatrix * v;
 	gl_Position = projectionMatrix * v;

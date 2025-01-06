@@ -124,8 +124,8 @@ protected:
 
 	//! Is the transform rigid or weighted?
 	bool transformRigid = true;
-	//! Bone transforms as 4x3 matrices
-	QVector<float> boneTransforms;
+	//! Bone transforms as 4x3 matrices in row-major order
+	QVector<FloatVector4> boneTransforms;
 	//! Bone weights 0 to 3 (integer part = bone index, fractional part = weight * 65535.0 / 65536.0)
 	QVector<Vector4> boneWeights0;
 	//! Bone weights 4 to 7

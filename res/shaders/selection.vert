@@ -16,39 +16,20 @@ uniform int selectionFlags;
 // if Scene::selecting == true: value to add to color key (e.g. shapeID << 16)
 uniform int selectionParam;
 
-uniform int numBones;
-uniform mat4x3 boneTransforms[100];
-
 layout ( location = 0 ) in vec3	vertexPosition;
 layout ( location = 1 ) in vec4	vertexColor;
 layout ( location = 5 ) in vec4	boneWeights0;
 layout ( location = 6 ) in vec4	boneWeights1;
 
+#define BT_POSITION_ONLY 1
+#include "bonetransform.glsl"
+
 void main()
 {
 	vec4	v = vec4( vertexPosition, 1.0 );
 
-	if ( numBones > 0 ) {
-		vec3	vTmp = vec3( 0.0 );
-		float	wSum = 0.0;
-		for ( int i = 0; i < 8; i++ ) {
-			float	bw;
-			if ( i < 4 )
-				bw = boneWeights0[i];
-			else
-				bw = boneWeights1[i & 3];
-			if ( bw > 0.0 ) {
-				int	bone = int( bw );
-				if ( bone >= numBones )
-					continue;
-				float	w = fract( bw );
-				vTmp += boneTransforms[bone] * v * w;
-				wSum += w;
-			}
-		}
-		if ( wSum > 0.0 )
-			v = vec4( vTmp / wSum, 1.0 );
-	}
+	if ( numBones > 0 )
+		boneTransform( v );
 
 	v = projectionMatrix * ( modelViewMatrix * v );
 

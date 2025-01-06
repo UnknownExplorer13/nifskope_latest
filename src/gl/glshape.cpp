@@ -100,7 +100,7 @@ void Shape::updateBoneTransforms()
 		transformRigid = true;
 		return;
 	}
-	boneTransforms.fill( 0.0f, numBones * 12 );
+	boneTransforms.fill( FloatVector4( 0.0f ), numBones * 3 );
 	transformRigid = false;
 
 	Node * root = findParent( skeletonRoot );
@@ -113,32 +113,28 @@ void Shape::updateBoneTransforms()
 			t = skeletonTrans * bone->localTrans( skeletonRoot ) * t;
 		else
 			t = skeletonTrans * t;
-		float *	bt = boneTransforms.data() + ( i * 12 );
-		bt[0] = t.rotation.data()[0] * t.scale;
-		bt[1] = t.rotation.data()[3] * t.scale;
-		bt[2] = t.rotation.data()[6] * t.scale;
-		bt[3] = t.rotation.data()[1] * t.scale;
-		bt[4] = t.rotation.data()[4] * t.scale;
-		bt[5] = t.rotation.data()[7] * t.scale;
-		bt[6] = t.rotation.data()[2] * t.scale;
-		bt[7] = t.rotation.data()[5] * t.scale;
-		bt[8] = t.rotation.data()[8] * t.scale;
-		bt[9] = t.translation[0];
-		bt[10] = t.translation[1];
-		bt[11] = t.translation[2];
+		FloatVector4 *	bt = boneTransforms.data() + ( i * 3 );
+		bt[0] = FloatVector4::convertVector3( t.rotation.data() ) * t.scale;
+		bt[0][3] = t.translation[0];
+		bt[1] = FloatVector4::convertVector3( t.rotation.data() + 3 ) * t.scale;
+		bt[1][3] = t.translation[1];
+		bt[2] = FloatVector4::convertVector3( t.rotation.data() + 6 ) * t.scale;
+		bt[2][3] = t.translation[2];
 	}
 
-	qsizetype	numVerts = verts.size();
-	transVerts.resize( numVerts );
-	transVerts.fill( Vector3() );
-
+	transVerts = verts;
+	Vector3 *	p = transVerts.data();
+	qsizetype	numVerts = transVerts.size();
+	int	numWeights = ( boneWeights1.size() < numVerts ? 4 : 8 );
 	for ( qsizetype i = 0; i < numVerts; i++ ) {
-		FloatVector4	v = FloatVector4::convertVector3( &( verts.at( i )[0] ) );
+		FloatVector4	v = FloatVector4::convertVector3( &( p[i][0] ) );
 		v[3] = 1.0f;
 		const float *	wp = &( boneWeights0.at( i )[0] );
-		FloatVector4	vTmp( 0.0f );
+		FloatVector4	xTmp( 0.0f );
+		FloatVector4	yTmp( 0.0f );
+		FloatVector4	zTmp( 0.0f );
 		float	wSum = 0.0f;
-		for ( int j = 0; j < 8; j++, wp++ ) {
+		for ( int j = 0; j < numWeights; j++, wp++ ) {
 			if ( j == 4 )
 				wp = &( boneWeights1.at( i )[0] );
 			float	w = *wp;
@@ -147,18 +143,20 @@ void Shape::updateBoneTransforms()
 				if ( b < 0 || b >= numBones ) [[unlikely]]
 					continue;
 				w -= float( b );
-				const float *	bt = boneTransforms.constData() + ( b * 12 );
-				FloatVector4	tmp = FloatVector4::convertVector3( bt ) * v[0];
-				tmp += FloatVector4::convertVector3( bt + 3 ) * v[1];
-				tmp += FloatVector4::convertVector3( bt + 6 ) * v[2];
-				tmp += FloatVector4::convertVector3( bt + 9 ) * v[3];
-				vTmp += tmp * w;
+				const FloatVector4 *	bt = boneTransforms.constData() + ( b * 3 );
+				FloatVector4	vTmp = v * w;
+				xTmp += vTmp * bt[0];
+				yTmp += vTmp * bt[1];
+				zTmp += vTmp * bt[2];
 				wSum += w;
 			}
 		}
-		if ( wSum > 0.0f )
-			v = vTmp / wSum;
-		v.convertToVector3( &( transVerts[i][0] ) );
+		if ( wSum > 0.0f ) {
+			FloatVector4	wSumInv( 1.0f / wSum );
+			p[i][0] = xTmp.dotProduct( wSumInv );
+			p[i][1] = yTmp.dotProduct( wSumInv );
+			p[i][2] = zTmp.dotProduct( wSumInv );
+		}
 	}
 
 	boundSphere = BoundSphere( transVerts );
@@ -456,14 +454,14 @@ void Shape::setUniforms( NifSkopeOpenGLContext::Program * prog ) const
 	if ( nifVersion < 170 ) {
 		// TODO: Starfield skinning is not implemented
 		if ( !transformRigid )
-			numBones = std::min< qsizetype >( boneTransforms.size() / 12, 100 );
+			numBones = std::min< qsizetype >( boneTransforms.size() / 3, qsizetype( prog->maxNumBones ) );
 		prog->uni1i( "numBones", int( numBones ) );
 	}
 
 	if ( numBones > 0 ) {
 		int	l = prog->uniLocation( "boneTransforms" );
 		if ( l >= 0 )
-			prog->f->glUniformMatrix4x3fv( l, GLsizei( numBones ), GL_FALSE, boneTransforms.constData() );
+			prog->f->glUniformMatrix3x4fv( l, GLsizei( numBones ), GL_FALSE, &( boneTransforms.constFirst()[0] ) );
 		m = v;
 	}
 

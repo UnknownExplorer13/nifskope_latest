@@ -166,7 +166,7 @@ void BSShape::updateData( const NifModel * nif )
 			boneData[i].bone = bones[i];
 
 		boneWeights0.resize( numVerts );
-		boneWeights1.resize( numVerts );
+		boneWeights1.clear();
 
 		for ( int i = 0; i < numVerts; i++ ) {
 			auto idx = nif->getIndex( iData, i );

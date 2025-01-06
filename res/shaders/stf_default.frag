@@ -209,7 +209,7 @@ uniform samplerCube	CubeMap2;
 uniform bool	hasCubeMap;
 uniform bool	hasSpecular;
 
-uniform sampler2D	textureUnits[SF_NUM_TEXTURE_UNITS];
+uniform sampler2D	textureUnits[NUM_TEXTURE_UNITS];
 
 uniform vec4 parallaxOcclusionSettings;	// min. steps, max. steps, height scale, height offset
 // bit 0: alpha testing, bit 1: alpha blending

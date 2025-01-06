@@ -127,6 +127,7 @@ public:
 		unsigned int id;
 		bool status;
 		bool isProgram;
+		std::uint16_t maxNumBones;
 	};
 
 public:
@@ -308,7 +309,7 @@ public:
 	FloatVector4 getViewport() const;
 
 	//! Updates shaders
-	void updateShaders();
+	void updateShaders( int maxNumBones = 100 );
 	//! Releases shaders
 	void releaseShaders();
 	//! Select shader program to use
