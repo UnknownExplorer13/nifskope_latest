@@ -77,30 +77,51 @@ void BSShape::updateData( const NifModel * nif )
 			numVerts = nDynVerts;
 	}
 
+	static const char *	attrNames[8] = {
+		"Vertex", "Bitangent X", "Bitangent Y", "Bitangent Z", "UV", "Normal", "Tangent", "Vertex Colors"
+	};
+	int	attrRows[8];
+	for ( int i = 0; i < 8; i++ ) {
+		QModelIndex	j = nif->getIndex( nif->getIndex( iData, 0 ), attrNames[i] );
+		attrRows[i] = ( j.isValid() ? j.row() : -1 );
+	}
+	auto	vertsData = verts.fill( Vector3(), numVerts ).data();
+	auto	normsData = norms.fill( Vector3(), numVerts ).data();
+	auto	colorsData = colors.fill( Color4( 0.0f, 0.0f, 0.0f, 1.0f ), numVerts ).data();
+	auto	tangentsData = tangents.fill( Vector3(), numVerts ).data();
+	auto	bitangentsData = bitangents.fill( Vector3(), numVerts ).data();
+	auto	coordsetData = coordset.fill( Vector2(), numVerts ).data();
 	for ( int i = 0; i < numVerts; i++ ) {
 		auto idx = nif->getIndex( iData, i );
+		if ( !idx.isValid() )
+			continue;
+		auto item = nif->getItem( idx );
+		if ( !item )
+			continue;
+
 		float bitX;
 
 		if ( isDynamic ) {
 			auto& dynv = dynVerts.at(i);
-			verts << Vector3( dynv );
+			vertsData[i] = Vector3( dynv );
 			bitX = dynv[3];
 		} else {
-			verts << nif->get<Vector3>( idx, "Vertex" );
-			bitX = nif->get<float>( idx, "Bitangent X" );
+			vertsData[i] = nif->get<Vector3>( item->child( attrRows[0] ) );	// "Vertex"
+			bitX = nif->get<float>( item->child( attrRows[1] ) );	// "Bitangent X"
 		}
 
 		// Bitangent Y/Z
-		auto bitY = nif->get<float>( idx, "Bitangent Y" );
-		auto bitZ = nif->get<float>( idx, "Bitangent Z" );
+		auto bitY = nif->get<float>( item->child( attrRows[2] ) );	// "Bitangent Y"
+		auto bitZ = nif->get<float>( item->child( attrRows[3] ) );	// "Bitangent Z"
 
-		coordset << nif->get<HalfVector2>( idx, "UV" );
-		norms += nif->get<ByteVector3>( idx, "Normal" );
-		tangents += nif->get<ByteVector3>( idx, "Tangent" );
-		bitangents += Vector3( bitX, bitY, bitZ );
+		coordsetData[i] = nif->get<HalfVector2>( item->child( attrRows[4] ) );	// "UV"
+		normsData[i] = nif->get<ByteVector3>( item->child( attrRows[5] ) );	// "Normal"
+		tangentsData[i] = nif->get<ByteVector3>( item->child( attrRows[6] ) );	// "Tangent"
+		bitangentsData[i] = Vector3( bitX, bitY, bitZ );
 
-		auto vcIdx = nif->getIndex( idx, "Vertex Colors" );
-		colors += vcIdx.isValid() ? nif->get<ByteColor4>( vcIdx ) : Color4(0, 0, 0, 1);
+		auto vcItem = item->child( attrRows[7] );	// "Vertex Colors"
+		if ( vcItem )
+			colorsData[i] = nif->get<ByteColor4>( vcItem );
 	}
 
 	// Add coords as the first set of QList
@@ -165,7 +186,7 @@ void BSShape::updateData( const NifModel * nif )
 		for ( int i = 0; i < nTotalBones; i++ )
 			boneData[i].bone = bones[i];
 
-		boneWeights0.resize( numVerts );
+		boneWeights0.fill( FloatVector4( 0.0f ), numVerts );
 		boneWeights1.clear();
 
 		for ( int i = 0; i < numVerts; i++ ) {
@@ -175,9 +196,12 @@ void BSShape::updateData( const NifModel * nif )
 			if ( wts.size() < 4 || bns.size() < 4 )
 				continue;
 
+			size_t	k = 0;
 			for ( int j = 0; j < 4; j++ ) {
-				if ( bns[j] < nTotalBones && wts[j] > 0.0f )
-					boneWeights0[i][j] = float( bns[j] ) + ( std::min( wts[j], 1.0f ) * float( 65535.0 / 65536.0 ) );
+				if ( bns[j] < nTotalBones && wts[j] > 0.0f ) {
+					boneWeights0[i][k] = float( bns[j] ) + ( std::min( wts[j], 1.0f ) * float( 65535.0 / 65536.0 ) );
+					k++;
+				}
 			}
 		}
 

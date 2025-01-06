@@ -18,8 +18,6 @@ uniform int selectionParam;
 
 layout ( location = 0 ) in vec3	vertexPosition;
 layout ( location = 1 ) in vec4	vertexColor;
-layout ( location = 5 ) in vec4	boneWeights0;
-layout ( location = 6 ) in vec4	boneWeights1;
 
 #define BT_POSITION_ONLY 1
 #include "bonetransform.glsl"

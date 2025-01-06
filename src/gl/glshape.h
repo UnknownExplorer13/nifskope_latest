@@ -126,10 +126,10 @@ protected:
 	bool transformRigid = true;
 	//! Bone transforms as 4x3 matrices in row-major order
 	QVector<FloatVector4> boneTransforms;
-	//! Bone weights 0 to 3 (integer part = bone index, fractional part = weight * 65535.0 / 65536.0)
-	QVector<Vector4> boneWeights0;
-	//! Bone weights 4 to 7
-	QVector<Vector4> boneWeights1;
+	//! Bone weights 0 to 3 (integer part = bone index, fractional part = weight * 65535.0 / 65536.0), terminated by 0.0
+	QVector<FloatVector4> boneWeights0;
+	//! Bone weights 4 to 7 (may be empty if the maximum number of weights per vertex is 4 or less)
+	QVector<FloatVector4> boneWeights1;
 
 	//! Toggle for skinning
 	bool isSkinned = false;

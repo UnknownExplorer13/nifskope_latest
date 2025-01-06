@@ -138,18 +138,18 @@ void Shape::updateBoneTransforms()
 			if ( j == 4 )
 				wp = &( boneWeights1.at( i )[0] );
 			float	w = *wp;
-			if ( w > 0.0f ) {
-				int	b = int( w );
-				if ( b < 0 || b >= numBones ) [[unlikely]]
-					continue;
-				w -= float( b );
-				const FloatVector4 *	bt = boneTransforms.constData() + ( b * 3 );
-				FloatVector4	vTmp = v * w;
-				xTmp += vTmp * bt[0];
-				yTmp += vTmp * bt[1];
-				zTmp += vTmp * bt[2];
-				wSum += w;
-			}
+			if ( !( w > 0.0f ) )
+				break;
+			int	b = int( w );
+			if ( b < 0 || b >= numBones ) [[unlikely]]
+				continue;
+			w -= float( b );
+			const FloatVector4 *	bt = boneTransforms.constData() + ( b * 3 );
+			FloatVector4	vTmp = v * w;
+			xTmp += vTmp * bt[0];
+			yTmp += vTmp * bt[1];
+			zTmp += vTmp * bt[2];
+			wSum += w;
 		}
 		if ( wSum > 0.0f ) {
 			FloatVector4	wSumInv( 1.0f / wSum );

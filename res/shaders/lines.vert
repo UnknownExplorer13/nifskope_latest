@@ -16,8 +16,6 @@ layout ( location = 1 ) in vec4	vertexColor;
 layout ( location = 2 ) in vec3	normalVector;
 layout ( location = 3 ) in vec3	tangentVector;
 layout ( location = 4 ) in vec3	bitangentVector;
-layout ( location = 5 ) in vec4	boneWeights0;
-layout ( location = 6 ) in vec4	boneWeights1;
 
 #include "bonetransform.glsl"
 

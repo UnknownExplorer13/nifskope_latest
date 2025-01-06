@@ -21,8 +21,6 @@ uniform vec4 vertexColorOverride;	// components greater than zero replace the ve
 layout ( location = 0 ) in vec3	vertexPosition;
 layout ( location = 1 ) in vec4	vertexColor;
 layout ( location = 2 ) in vec3	normalVector;
-layout ( location = 5 ) in vec4	boneWeights0;
-layout ( location = 6 ) in vec4	boneWeights1;
 layout ( location = 7 ) in vec2	multiTexCoord0;
 
 #define BT_NO_TANGENTS 1
