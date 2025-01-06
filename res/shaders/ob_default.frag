@@ -35,15 +35,24 @@ uniform float uvRotation;
 
 uniform vec4 falloffParams;
 
+uniform vec4 frontMaterialDiffuse;
+uniform vec4 frontMaterialSpecular;
+uniform vec4 frontMaterialAmbient;
+uniform vec4 frontMaterialEmission;
+uniform float frontMaterialShininess;
+
 in mat3 reflMatrix;
 
 in vec3 LightDir;
 in vec3 ViewDir;
 
+in vec2 texCoord;
+
+in vec4 A;
 in vec4 C;
 in vec4 D;
-in vec4 A;
-in float toneMapScale;
+
+out vec4 fragColor;
 
 
 vec3 tonemap(vec3 x)
@@ -55,9 +64,9 @@ vec3 tonemap(vec3 x)
 	float e = 0.02;
 	float f = 0.30;
 
-	vec3 z = x * x * gl_LightSource[0].diffuse.a * (toneMapScale * 4.22978723);
+	vec3 z = x * x * D.a * (A.a * 4.22978723);
 	z = (z * (a * z + b * c) + d * e) / (z * (a * z + b) + d * f) - e / f;
-	return sqrt(z / (toneMapScale * 0.93333333));
+	return sqrt(z / (A.a * 0.93333333));
 }
 
 // parallax occlusion mapping based on code from
@@ -111,7 +120,7 @@ void main()
 	vec3 L = normalize( LightDir );
 	vec3 E = normalize( ViewDir );
 
-	vec2 offset = gl_TexCoord[0].st - uvCenter;
+	vec2 offset = texCoord.st - uvCenter;
 	float r_c = cos( uvRotation );
 	float r_s = sin( uvRotation ) * -1.0;
 	offset = vec2( offset.x * r_c - offset.y * r_s, offset.x * r_s + offset.y * r_c ) * uvScale + uvCenter + uvOffset;
@@ -143,22 +152,12 @@ void main()
 		vec3 H = normalize( L + E );
 		float NdotL = max( dot(normal, L), 0.0 );
 
-		// work around the lack of bitwise operators in GLSL 1.20
-		int tmp = vertexColorFlags;
-		bool vcfBit5 = ( tmp >= 32 );
-		if ( vcfBit5 )
-			tmp -= 32;
-		bool vcfBit4 = ( tmp >= 16 );
-		if ( vcfBit4 )
-			tmp -= 16;
-		bool vcfBit3 = ( tmp >= 8 );
-
-		if ( vcfBit3 && vcfBit5 ) {
+		if ( ( vertexColorFlags & 0x28 ) == 0x28 ) {
 			color *= C;
 			color.rgb *= A.rgb + ( D.rgb * NdotL );
-		} else if ( vcfBit3 ) {
-			color.rgb *= ( A.rgb * gl_FrontMaterial.ambient.rgb ) + ( D.rgb * gl_FrontMaterial.diffuse.rgb * NdotL );
-			color.a *= min( gl_FrontMaterial.ambient.a + gl_FrontMaterial.diffuse.a, 1.0 );
+		} else if ( ( vertexColorFlags & 0x08 ) != 0 ) {
+			color.rgb *= ( A.rgb * frontMaterialAmbient.rgb ) + ( D.rgb * frontMaterialDiffuse.rgb * NdotL );
+			color.a *= min( frontMaterialAmbient.a + frontMaterialDiffuse.a, 1.0 );
 		} else {
 			color.rgb *= A.rgb + ( D.rgb * NdotL );
 		}
@@ -173,13 +172,13 @@ void main()
 				cube *= texture( EnvironmentMap, offset ).r * cubeMapScale;
 			else
 				cube *= normalMap.a * cubeMapScale;
-			color.rgb += cube * sqrt( gl_LightSource[0].ambient.rgb );
+			color.rgb += cube * A.rgb * ( 1.0 / 0.375 );
 		}
 
 		// Emissive
 		vec3 emissive = glowColor.rgb * glowMult;
-		if ( !vcfBit4 )
-			emissive *= gl_FrontMaterial.emission.rgb;
+		if ( ( vertexColorFlags & 0x10 ) == 0 )
+			emissive *= frontMaterialEmission.rgb;
 		else
 			emissive *= C.rgb;
 		if ( hasGlowMap )
@@ -191,7 +190,7 @@ void main()
 		if ( hasSpecular && NdotL > 0.0 ) {
 			float NdotH = dot( normal, H );
 			if ( NdotH > 0.0 ) {
-				vec4 spec = gl_FrontMaterial.specular * pow( NdotH, gl_FrontMaterial.shininess );
+				vec4 spec = frontMaterialSpecular * pow( NdotH, frontMaterialShininess );
 				color.rgb += spec.rgb * normalMap.a;
 			}
 		}
@@ -206,5 +205,5 @@ void main()
 			discard;
 	}
 
-	gl_FragColor = vec4( tonemap( color.rgb ), color.a );
+	fragColor = vec4( tonemap( color.rgb ), color.a );
 }
