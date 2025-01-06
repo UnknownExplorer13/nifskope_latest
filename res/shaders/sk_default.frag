@@ -104,8 +104,6 @@ void main()
 	vec4 glowMap = texture( GlowMap, offset );
 	
 	vec3 normal = normalize(btnMatrix_norm * (normalMap.rgb * 2.0 - 1.0));
-	if ( !gl_FrontFacing )
-		normal *= -1.0;
 
 	vec3 L = normalize(LightDir);
 	vec3 R = reflect(-L, normal);

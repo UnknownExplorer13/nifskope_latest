@@ -120,8 +120,6 @@ void main()
 	vec4 normalMap = texture( NormalMap, offset );
 
 	vec3 normalTS = normalize(normalMap.rgb * 2.0 - 1.0);
-	if ( !gl_FrontFacing )
-		normalTS *= -1.0;
 	vec3 normal = normalize(btnMatrix * normalTS);
 
 	// Sample the non-parallax offset alpha channel of the inner map
