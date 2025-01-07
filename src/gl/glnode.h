@@ -141,18 +141,11 @@ public:
 
 	Controller * findController( const QString & proptype, const QModelIndex & index );
 
-public slots:
-	void updateSettings();
-
 protected:
 	void setController( const NifModel * nif, const QModelIndex & controller ) override;
 	void updateImpl( const NifModel * nif, const QModelIndex & block ) override;
 
 	void setGLColor( FloatVector4 c ) const;
-	inline void setGLColor( const QColor & c ) const
-	{
-		setGLColor( FloatVector4( Color4(c) ) );
-	}
 
 	// Old Options API
 	//	TODO: Move away from the GL-like naming
@@ -175,13 +168,6 @@ protected:
 	Transform local;
 
 	NodeFlags flags;
-
-	struct Settings
-	{
-		QColor highlight;
-		QColor wireframe;
-	} cfg;
-
 
 	bool presorted = false;
 

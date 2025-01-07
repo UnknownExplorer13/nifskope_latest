@@ -43,7 +43,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QHash>
 #include <QMap>
 #include <QPersistentModelIndex>
-#include <QStack>
 #include <QStringList>
 
 
@@ -54,6 +53,7 @@ class Renderer;
 class Shape;
 class QAction;
 class QOpenGLContext;
+class QSettings;
 
 class Scene final : public QObject
 {
@@ -69,6 +69,7 @@ public:
 	}
 
 	void updateShaders();
+	void updateColors( QSettings & settings );
 
 	void clear( bool flushTextures = true );
 	void make( NifModel * nif, bool flushTextures = false );
@@ -216,8 +217,6 @@ public:
 
 	QVector<Shape *> shapes;
 
-	QColor gridColor;
-
 	FloatVector4 currentGLColor;
 	float currentGLLineWidth;
 	float currentGLPointSize;
@@ -250,6 +249,11 @@ protected:
 	Vector3 * allocateVertexAttr( size_t numVerts, FloatVector4 ** colors = nullptr );
 
 public:
+	//! Color settings
+	FloatVector4 gridColor;
+	FloatVector4 highlightColor;
+	FloatVector4 wireframeColor;
+
 	//! gltools.cpp interface
 	NifSkopeOpenGLContext::Program * useProgram( std::string_view name );
 	void setGLColor( const QColor & c );
@@ -285,6 +289,8 @@ public:
 	void drawArc( const Vector3 & c, const Vector3 & x, const Vector3 & y, float an, float ax, int sd = 8 );
 	void drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & x, const Vector3 & y,
 						float an, float ax, float r, int sd = 8 );
+	// calculate model matrix so that (0, 0, 0) transforms to c, and (0, 0, 1) to c + n
+	static Matrix4 calculateTransform( const Vector3 & c, const Vector3 & n, float xyScale );
 	void drawCone( const Vector3 & c, Vector3 n, float a, int sd = 16 );
 	void drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane,
 							float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd = 16 );
@@ -292,13 +298,14 @@ public:
 	void drawSphereSimple( const Vector3 & c, float r, int sd = 36, int s2 = 2 );
 	void drawSphere( const Vector3 & c, float r, int sd = 8 );
 	void drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
-	void drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
+	bool drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd = 5 );
 	void drawDashLine( const Vector3 & a, const Vector3 & b, int sd = 15 );
 	void drawConvexHull( const NifModel * nif, const QModelIndex & iShape, float scale, bool solid = false );
 	void drawNiTSS( const NifModel * nif, const QModelIndex & iShape, bool solid = false );
 	void drawCMS( const NifModel * nif, const QModelIndex & iShape, bool solid = false );
 	void drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd = 16, bool solid = false );
 	void drawRail( const Vector3 & a, const Vector3 & b );
+	void renderText( const Vector3 & c, const QString & str );
 
 	// vec3 position, vec4 color, vec3 normal, vec3 tangent, vec3 bitangent, vec4 weights0, vec4 weights1,
 	// vec2 texcoord0, ..., vec2 texcoord8

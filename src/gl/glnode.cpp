@@ -181,40 +181,25 @@ Node::Node( Scene * s, const QModelIndex & iBlock) : IControllable( s, iBlock ),
 {
 	nodeId = 0;
 	flags.bits = 0;
-
-	updateSettings();
-
-	connect( NifSkope::getOptions(), &SettingsDialog::saveSettings, this, &Node::updateSettings );
-}
-
-void Node::updateSettings()
-{
-	QSettings settings;
-	settings.beginGroup( "Settings/Render/Colors/" );
-	// TODO: Remove the registry read for every new Node
-	cfg.highlight = settings.value( "Highlight", QColor( 255, 255, 0 ) ).value<QColor>();
-	cfg.wireframe = settings.value( "Wireframe", QColor( 0, 255, 0 ) ).value<QColor>();
-
-	settings.endGroup();
 }
 
 void Node::setGLColor( FloatVector4 c ) const
 {
 	NifSkopeOpenGLContext::Program *	prog;
 	if ( scene->renderer && ( prog = scene->renderer->getCurrentProgram() ) != nullptr )
-		prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( c ) );
+		prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( c ) );
 }
 
 // Old Options API
 //	TODO: Move away from the GL-like naming
 void Node::glHighlightColor() const
 {
-	setGLColor( cfg.highlight );
+	setGLColor( scene->highlightColor );
 }
 
 void Node::glNormalColor() const
 {
-	setGLColor( cfg.wireframe );
+	setGLColor( scene->wireframeColor );
 }
 
 
@@ -495,7 +480,7 @@ void Node::draw()
 	if ( !scene->isSelModeObject() )
 		return;
 
-	FloatVector4	color = FloatVector4( Color4(cfg.wireframe) );
+	FloatVector4	color = scene->wireframeColor;
 	float	lineWidth = GLView::Settings::lineWidthHighlight;
 	float	pointSize = GLView::Settings::vertexSelectPointSize;
 	if ( scene->selecting ) {
@@ -553,7 +538,7 @@ void Node::drawSelection() const
 
 	auto n = scene->currentIndex.data( NifSkopeDisplayRole ).toString();
 
-	FloatVector4 color = FloatVector4( Color4( cfg.highlight ) );
+	FloatVector4 color = scene->highlightColor;
 	float lineWidth = GLView::Settings::lineWidthHighlight;
 	if ( scene->selecting ) {
 		color = getColorKeyFromID( nodeId );
@@ -601,9 +586,9 @@ void Node::drawSelection() const
 			scene->pushAndMultModelViewMatrix( t );
 
 			if ( i == sel ) {
-				scene->setGLColor( cfg.highlight );
+				scene->setGLColor( scene->highlightColor );
 			} else {
-				scene->setGLColor( cfg.wireframe );
+				scene->setGLColor( scene->wireframeColor );
 			}
 
 			auto pos = Vector3( 0, 0, 0 );
@@ -667,13 +652,13 @@ void Node::drawVertexSelection( QVector<Vector3> & verts, int i )
 {
 	glDepthFunc( GL_LEQUAL );
 
-	scene->setGLColor( cfg.wireframe );
+	scene->setGLColor( scene->wireframeColor );
 	scene->setGLPointSize( GLView::Settings::vertexPointSize );
 	scene->drawPoints( verts.constData(), size_t( verts.size() ) );
 
 	if ( i >= 0 && i < verts.size() ) {
 		glDepthFunc( GL_ALWAYS );
-		scene->setGLColor( cfg.highlight );
+		scene->setGLColor( scene->highlightColor );
 		scene->setGLPointSize( GLView::Settings::vertexPointSizeSelected );
 		scene->drawPoints( verts.constData() + i );
 	}
@@ -683,7 +668,7 @@ void Node::drawTriangleSelection( QVector<Vector3> const & verts, Triangle const
 {
 	glDepthFunc( GL_ALWAYS );
 
-	scene->setGLColor( cfg.highlight );
+	scene->setGLColor( scene->highlightColor );
 	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
 	qsizetype	v0 = tri[0];
 	qsizetype	v1 = tri[1];
@@ -697,7 +682,7 @@ void Node::drawTriangleSelection( QVector<Vector3> const & verts, Triangle const
 void Node::drawTriangleIndex( QVector<Vector3> const & verts, Triangle const & tri, int index )
 {
 	Vector3 c = ( verts.value( tri.v1() ) + verts.value( tri.v2() ) + verts.value( tri.v3() ) ) /  3.0;
-	renderText( c, QString( "%1" ).arg( index ) );
+	scene->renderText( c, QString( "%1" ).arg( index ) );
 }
 
 void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
@@ -727,7 +712,7 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 				if ( !scene->selecting ) {
 					if ( scene->currentBlock == nif->getBlockIndex( nif->getLink( nif->getIndex( iShapes, r ) ) ) ) {
 						// fix: add selected visual to havok meshes
-						scene->setGLColor( cfg.highlight );
+						scene->setGLColor( scene->highlightColor );
 						scene->setGLLineWidth( GLView::Settings::lineWidthHighlight );
 					} else {
 						if ( scene->currentBlock != iShape ) {
@@ -821,7 +806,7 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 		if ( !scene->selecting ) {
 			if ( scene->currentBlock == nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ) ) {
 				// fix: add selected visual to havok meshes
-				scene->setGLColor( cfg.highlight );
+				scene->setGLColor( scene->highlightColor );
 				scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );	// taken from "DrawTriangleSelection"
 			} else {
 				scene->setGLColor( origin_color4fv );
@@ -1028,7 +1013,7 @@ void Node::drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstra
 	} else {
 		if ( scene->currentBlock == nif->getBlockIndex( iConstraint ) ) {
 			// fix: add selected visual to havok meshes
-			color_a = FloatVector4( Color4(cfg.highlight) );
+			color_a = scene->highlightColor;
 			color_b.blendValues( color_a, 0x07 );
 		}
 	}
@@ -1422,7 +1407,7 @@ void Node::drawHavok()
 	if ( !scene->selecting ) {
 		if ( scene->currentBlock == nif->getBlockIndex( nif->getLink( iBody, "Shape" ) ) ) {
 			// fix: add selected visual to havok meshes
-			scene->setGLColor( cfg.highlight );
+			scene->setGLColor( scene->highlightColor );
 			scene->setGLLineWidth( GLView::Settings::lineWidthHighlight );
 			//scene->setGLPointSize( GLView::Settings::vertexSelectPointSize );
 		}
@@ -1682,9 +1667,9 @@ void Node::drawFurn()
 			QModelIndex iPosition = nif->getIndex( iPositions, j );
 
 			if ( scene->currentIndex == iPosition )
-				scene->setGLColor( cfg.highlight );
+				scene->setGLColor( scene->highlightColor );
 			else
-				scene->setGLColor( cfg.wireframe );
+				scene->setGLColor( scene->wireframeColor );
 
 			drawFurnitureMarker( nif, iPosition );
 		}

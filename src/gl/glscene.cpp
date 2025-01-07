@@ -98,12 +98,12 @@ Scene::Scene( TexCache * texcache, QObject * parent ) :
 
 	settings.endGroup();
 
-	gridColor = settings.value( "Settings/Render/Colors/Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>();
-
 	currentGLColor = FloatVector4( 0.0f );
 	currentGLLineWidth = 1.0f;
 	currentGLPointSize = 1.0f;
 	currentModelViewMatrix = modelViewMatrixStack;
+
+	updateColors( settings );
 }
 
 Scene::~Scene()
@@ -122,6 +122,17 @@ void Scene::setOpenGLContext( QOpenGLContext * context )
 void Scene::updateShaders()
 {
 	renderer->updateShaders();
+}
+
+void Scene::updateColors( QSettings & settings )
+{
+	settings.beginGroup( "Settings/Render/Colors/" );
+
+	gridColor = FloatVector4( Color4( settings.value( "Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>() ) );
+	highlightColor = FloatVector4( Color4( settings.value( "Highlight", QColor( 255, 255, 0 ) ).value<QColor>() ) );
+	wireframeColor = FloatVector4( Color4( settings.value( "Wireframe", QColor( 0, 255, 0 ) ).value<QColor>() ) );
+
+	settings.endGroup();
 }
 
 void Scene::clear( [[maybe_unused]] bool flushTextures )
@@ -351,6 +362,9 @@ void Scene::draw()
 {
 	drawShapes();
 
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_FRAMEBUFFER_SRGB );
+
 	if ( hasOption(ShowNodes) )
 		drawNodes();
 	if ( hasOption(ShowCollision) )
@@ -406,7 +420,7 @@ void Scene::drawGrid()
 	glDepthMask( GL_TRUE );
 	glDepthFunc( GL_LESS );
 
-	FloatVector4	c0 = FloatVector4( Color4( gridColor ) );
+	FloatVector4	c0 = gridColor;
 	FloatVector4	c1( 1.0f, 0.0f, 0.0f, 1.0f );
 	FloatVector4	c2( 0.0f, 1.0f, 0.0f, 1.0f );
 

@@ -217,10 +217,10 @@ void GLView::updateSettings()
 	z = settings.value( "General/Camera/Mwheel Zoom Speed", 8 ).toInt();
 	z = std::min< int >( std::max< int >( z, 0 ), 16 );
 
-	if ( scene )
-		scene->gridColor = settings.value( "Colors/Grid Color", QColor( 99, 99, 99, 204 ) ).value<QColor>();
-
 	settings.endGroup();
+
+	if ( scene )
+		scene->updateColors( settings );
 
 	// TODO: make these configurable via the UI
 	double	p = devicePixelRatioF();

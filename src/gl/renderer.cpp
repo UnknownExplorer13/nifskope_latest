@@ -879,18 +879,15 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 			doVCs = false;
 
 		if ( !doVCs ) {
+			c = FloatVector4( 1.0f );
 			if ( nifVersion < 130 && !mesh->hasVertexColors && lsp && lsp->hasVertexColors ) {
 				// Correctly blacken the mesh if SLSF2_Vertex_Colors is still on
 				//	yet "Has Vertex Colors" is not.
-				c = FloatVector4( 0.00000001f, 0.00000001f, 0.00000001f, 1.0f );
-			} else {
-				c = FloatVector4( 1.0f );
+				c.blendValues( FloatVector4( 1.0e-15f ), 0x07 );
 			}
-		}
-
-		// TODO (Gavrant): suspicious code. Should the check be replaced with !bsprop->hasVertexAlpha ?
-		if ( mesh->isVertexAlphaAnimation
-			|| ( nifVersion < 130 && lsp && !lsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) ) ) {
+		} else if ( mesh->isVertexAlphaAnimation
+					|| ( nifVersion < 130 && lsp && !lsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) ) ) {
+			// TODO (Gavrant): suspicious code. Should the check be replaced with !bsprop->hasVertexAlpha ?
 			c[3] = 1.0f;
 		}
 
