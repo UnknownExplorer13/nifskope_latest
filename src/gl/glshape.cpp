@@ -189,12 +189,10 @@ void Shape::removeInvalidIndices()
 
 void Shape::drawVerts( float pointSize, int vertexSelected ) const
 {
-	auto	context = scene->renderer;
-	if ( !context )
-		return;
-	auto	prog = context->useProgram( "selection.prog" );
+	auto	prog = scene->useProgram( "selection.prog" );
 	if ( !prog )
 		return;
+	auto	context = scene->renderer;
 	setUniforms( prog );
 
 	int	selectionFlags = 0x0002;
@@ -212,7 +210,7 @@ void Shape::drawVerts( float pointSize, int vertexSelected ) const
 		glNormalColor();
 		selectionFlags = selectionFlags | ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 );
 		if ( vertexSelected >= 0 )
-			prog->uni4f( "highlightColor", FloatVector4( Color4( cfg.highlight ) ) );
+			prog->uni4f( "highlightColor", scene->highlightColor );
 		glEnable( GL_BLEND );
 		context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 	}
@@ -236,10 +234,39 @@ void Shape::drawVerts( float pointSize, int vertexSelected ) const
 
 void Shape::drawNormals( int btnMask, int vertexSelected, float lineLength ) const
 {
-	// TODO: implement this
-	(void) btnMask;
-	(void) vertexSelected;
-	(void) lineLength;
+	if ( scene->selecting || !( btnMask & 7 ) )
+		return;
+	auto	prog = scene->useProgram( "normals.prog" );
+	if ( !prog )
+		return;
+	auto	context = scene->renderer;
+	setUniforms( prog );
+
+	prog->uni1i( "btnSelection", ( !( btnMask & 4 ) ? ( !( btnMask & 1 ) ? 1 : 0 ) : 2 ) );
+	prog->uni1f( "normalLineLength", lineLength );
+	prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe * 0.78125f );
+	glNormalColor();
+	if ( vertexSelected >= 0 )
+		prog->uni4f( "highlightColor", scene->highlightColor );
+	prog->uni1i( "selectionParam", vertexSelected );
+
+	glEnable( GL_BLEND );
+	context->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
+
+	qsizetype	numVerts = verts.size();
+	context->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
+	if ( vertexSelected >= 0 && vertexSelected < numVerts ) {
+		prog->uni1f( "lineWidth", GLView::Settings::lineWidthHighlight * 1.2f );
+		glDepthFunc( GL_ALWAYS );
+		context->fn->glDrawArrays( GL_POINTS, GLint( vertexSelected ), 1 );
+		if ( ( btnMask & 7 ) == 3 ) {
+			prog->uni1i( "btnSelection", 1 );
+			// yellow -> cyan (2, 1, 0, 3)
+			prog->uni4f( "highlightColor", FloatVector4( scene->highlightColor ).shuffleValues( 0xC6 ) );
+			context->fn->glDrawArrays( GL_POINTS, GLint( vertexSelected ), 1 );
+		}
+		glDepthFunc( GL_LEQUAL );
+	}
 }
 
 void Shape::drawWireframe( FloatVector4 color ) const
@@ -252,7 +279,7 @@ void Shape::drawWireframe( FloatVector4 color ) const
 		return;
 
 	setUniforms( prog );
-	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( color ) );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( color ) );
 	prog->uni1i( "selectionParam", -1 );
 	prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe );
 
@@ -274,7 +301,7 @@ void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
 		return;
 
 	setUniforms( prog );
-	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( color ) );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( color ) );
 	prog->uni1i( "selectionFlags", 0 );
 	prog->uni1i( "selectionParam", -1 );
 

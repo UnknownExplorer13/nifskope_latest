@@ -388,18 +388,10 @@ void BSShape::drawSelection() const
 	// Parent index
 	auto pBlock = nif->getBlockIndex( nif->getParent( blk ) );
 
-	GLfloat lineWidth = GLView::Settings::lineWidthWireframe;
-
 	glEnable( GL_POLYGON_OFFSET_FILL );
 	glEnable( GL_POLYGON_OFFSET_LINE );
 	glEnable( GL_POLYGON_OFFSET_POINT );
 	glPolygonOffset( -1.0f, -2.0f );
-
-	float normalScale = bounds().radius / 20;
-	normalScale /= 2.0f;
-
-	if ( normalScale < 0.1f )
-		normalScale = 0.1f;
 
 	if ( !extraData ) {
 		if ( n == "Bounding Sphere" ) {
@@ -485,44 +477,19 @@ void BSShape::drawSelection() const
 		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 	}
 
-	// Draw Lines lambda
-	auto lines = [this, &normalScale, &lineWidth]( const QVector<Vector3> & v ) {
-		Shape::drawVerts( GLView::Settings::tbnPointSize, -1 );
-
-		int s = scene->currentIndex.parent().row();
-		glBegin( GL_LINES );
-
-		for ( int j = 0; j < verts.size() && j < v.size(); j++ ) {
-			glVertex( verts.value( j ) );
-			glVertex( verts.value( j ) + v.value( j ) * normalScale * 2 );
-			glVertex( verts.value( j ) );
-			glVertex( verts.value( j ) - v.value( j ) * normalScale / 2 );
-		}
-
-		glEnd();
-
-		if ( s >= 0 ) {
-			glDepthFunc( GL_ALWAYS );
-			glHighlightColor();
-			glLineWidth( GLView::Settings::lineWidthHighlight * 1.2f );
-			glBegin( GL_LINES );
-			glVertex( verts.value( s ) );
-			glVertex( verts.value( s ) + v.value( s ) * normalScale * 2 );
-			glVertex( verts.value( s ) );
-			glVertex( verts.value( s ) - v.value( s ) * normalScale / 2 );
-			glEnd();
-			glLineWidth( lineWidth );
-		}
-	};
-
-	// Draw Normals
-	if ( n.contains( QLatin1StringView("Normal") ) ) {
-		lines( norms );
-	}
-
-	// Draw Tangents
-	if ( n.contains( QLatin1StringView("Tangent") ) ) {
-		lines( tangents );
+	// Draw Normals, Tangents or Bitangents
+	int	btnMask = 0;
+	if ( n.contains( QLatin1StringView("Normal") ) )
+		btnMask = 0x04;
+	else if ( n.contains( QLatin1StringView("Tangent") ) )
+		btnMask = 0x02;
+	else if ( n.contains( QLatin1StringView("Bitangent") ) )
+		btnMask = 0x01;
+	if ( btnMask ) {
+		int	s = scene->currentIndex.parent().row();
+		Shape::drawVerts( GLView::Settings::tbnPointSize, s );
+		float	normalScale = std::max< float >( bounds().radius / 16.0f, 0.25f ) * viewTrans().scale;
+		Shape::drawNormals( btnMask, s, normalScale );
 	}
 
 	// Draw Triangles
@@ -530,9 +497,9 @@ void BSShape::drawSelection() const
 		int s = -1;
 		if ( n == p )
 			s = idx.row();
-		Shape::drawWireframe( FloatVector4( Color4(cfg.wireframe) ) );
+		Shape::drawWireframe( scene->wireframeColor );
 		if ( s >= 0 && s < sortedTriangles.size() )
-			Shape::drawTriangles( s, 1, FloatVector4( Color4(cfg.highlight) ) );
+			Shape::drawTriangles( s, 1, scene->highlightColor );
 	}
 
 	// Draw Segments/Subsegments
@@ -540,11 +507,16 @@ void BSShape::drawSelection() const
 		auto sidx = idx;
 		int s;
 
-		QVector<QColor> cols = { { 255, 0, 0, 128 }, { 0, 255, 0, 128 }, { 0, 0, 255, 128 }, { 255, 255, 0, 128 },
-								{ 0, 255, 255, 128 }, { 255, 0, 255, 128 }, { 255, 255, 255, 128 }
+		static const FloatVector4	cols[7] = {
+			{ 1.0f, 0.0f, 0.0f, 0.5f }, { 0.0f, 1.0f, 0.0f, 0.5f }, { 0.0f, 0.0f, 1.0f, 0.5f },
+			{ 1.0f, 1.0f, 0.0f, 0.5f }, { 0.0f, 1.0f, 1.0f, 0.5f }, { 1.0f, 0.0f, 1.0f, 0.5f },
+			{ 1.0f, 1.0f, 1.0f, 0.5f }
 		};
 
 		glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+		scene->loadModelViewMatrix( viewTrans() );
+		scene->drawTriangles( verts.constData(), size_t( verts.size() ), nullptr, true,
+								0, size_t( triangles.size() ) * 3, GL_UNSIGNED_SHORT, triangles.constData() );
 
 		auto type = idx.sibling( idx.row(), 1 ).data( NifSkopeDisplayRole ).toString();
 
@@ -552,8 +524,8 @@ void BSShape::drawSelection() const
 		bool isSegmentItem = (n == "Segment" && type == "BSGeometrySegmentData" && !nif->isArray( idx ));
 		bool isSubSegArray = (n == "Sub Segment" && nif->isArray( idx ));
 
-		int off = 0;
-		int cnt = 0;
+		qsizetype off = 0;
+		qsizetype cnt = 0;
 		int numRec = 0;
 
 		int o = 0;
@@ -563,7 +535,7 @@ void BSShape::drawSelection() const
 			o = -3; // Look 3 rows above for Sub Seg Array info
 		}
 
-		int maxTris = triangles.size();
+		qsizetype maxTris = triangles.size();
 
 		int loopNum = 1;
 		if ( isSegmentArray )
@@ -589,37 +561,34 @@ void BSShape::drawSelection() const
 				if ( subrec.data( NifSkopeDisplayRole ).toString() != "Sub Segment" )
 					o = 3; // Offset 3 rows for < 130 BSGeometrySegmentData
 
-				auto suboff = nif->getIndex( subrec, o, 2 ).data().toInt() / 3;
-				auto subcnt = nif->getIndex( subrec, o + 1, 2 ).data().toInt();
+				qsizetype suboff = nif->getIndex( subrec, o, 2 ).data().toInt() / 3;
+				qsizetype subcnt = nif->getIndex( subrec, o + 1, 2 ).data().toInt();
 
-				for ( int j = suboff; j < subcnt + suboff; j++ ) {
-					if ( j >= maxTris )
-						continue;
-
-					glColor( Color4( cols.value( i % 7 ) ) );
-					Triangle tri = triangles[j];
-					glBegin( GL_TRIANGLES );
-					glVertex( verts.value( tri.v1() ) );
-					glVertex( verts.value( tri.v2() ) );
-					glVertex( verts.value( tri.v3() ) );
-					glEnd();
+				if ( suboff < 0 ) {
+					subcnt += suboff;
+					suboff = 0;
 				}
+				subcnt = std::min< qsizetype >( subcnt, maxTris - suboff );
+				if ( suboff >= maxTris || subcnt < 1 )
+					continue;
+
+				setGLColor( cols[(unsigned int) i % 7U] );
+				context->fn->glDrawElements( GL_TRIANGLES, GLsizei( subcnt * 3 ),
+												GL_UNSIGNED_SHORT, (void *) ( suboff * 6 ) );
 			}
 
 			// Sub-segmentless Segments
 			if ( numRec == 0 && cnt > 0 ) {
-				glColor( Color4( cols.value( (idx.row() + l) % 7 ) ) );
+				if ( off < 0 ) {
+					cnt += off;
+					off = 0;
+				}
+				if ( off < maxTris && cnt > 0 ) {
+					cnt = std::min< qsizetype >( cnt, maxTris - off );
 
-				for ( int i = off; i < cnt + off; i++ ) {
-					if ( i >= maxTris )
-						continue;
-
-					Triangle tri = triangles[i];
-					glBegin( GL_TRIANGLES );
-					glVertex( verts.value( tri.v1() ) );
-					glVertex( verts.value( tri.v2() ) );
-					glVertex( verts.value( tri.v3() ) );
-					glEnd();
+					setGLColor( cols[(unsigned int) ( idx.row() + l ) % 7U] );
+					context->fn->glDrawElements( GL_TRIANGLES, GLsizei( cnt * 3 ),
+													GL_UNSIGNED_SHORT, (void *) ( off * 6 ) );
 				}
 			}
 		}
@@ -650,11 +619,12 @@ void BSShape::drawSelection() const
 		} else {
 			boneSphere( nif, idx );
 		}
+		bindShape();
 	}
 
 	// General wireframe
 	if ( blk == iBlock && idx != iData && p != "Vertex Data" && p != "Vertices" && n != "Triangles" )
-		Shape::drawWireframe( FloatVector4( Color4(cfg.wireframe) ) );
+		Shape::drawWireframe( scene->wireframeColor );
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
 	glDisable( GL_POLYGON_OFFSET_LINE );

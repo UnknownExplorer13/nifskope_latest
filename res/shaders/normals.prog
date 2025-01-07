@@ -2,4 +2,4 @@
 
 # never enabled on models by default
 
-shaders lines.vert normals.geom lines.frag
+shaders wireframe.vert normals.geom lines.frag

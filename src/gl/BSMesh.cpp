@@ -119,44 +119,7 @@ void BSMesh::drawSelection() const
 	// Name of this index's parent
 	auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
 
-	float	normalScale = std::max< float >( boundSphere.radius / 20.0f, 1.0f / 512.0f );
 	qsizetype	numTriangles = sortedTriangles.size();
-
-	// Draw Lines lambda
-	auto lines = [this, &normalScale]( const QVector<Vector3> & v, int s, bool isBitangent = false ) {
-		glNormalColor();
-		if ( !isBitangent ) {
-			Shape::drawVerts( GLView::Settings::tbnPointSize, -1 );
-
-			glLineWidth( GLView::Settings::lineWidthWireframe * 0.78125f );
-			glBegin( GL_LINES );
-			for ( int j = 0; j < verts.size() && j < v.size(); j++ ) {
-				glVertex( verts.value( j ) );
-				glVertex( verts.value( j ) + v.value( j ) * normalScale );
-				glVertex( verts.value( j ) );
-				glVertex( verts.value( j ) - v.value( j ) * normalScale * 0.25f );
-			}
-			glEnd();
-		}
-
-		if ( s >= 0 ) {
-			glDepthFunc( GL_ALWAYS );
-			if ( isBitangent ) {
-				Color4	c( cfg.highlight );
-				glColor4f( 1.0f - c[0], 1.0f - c[1], 1.0f - c[2], c[3] );
-			} else {
-				glHighlightColor();
-			}
-			glLineWidth( GLView::Settings::lineWidthHighlight * 1.2f );
-			glBegin( GL_LINES );
-			glVertex( verts.value( s ) );
-			glVertex( verts.value( s ) + v.value( s ) * normalScale * 2.0f );
-			glVertex( verts.value( s ) );
-			glVertex( verts.value( s ) - v.value( s ) * normalScale * 0.5f );
-			glEnd();
-		}
-		glLineWidth( GLView::Settings::lineWidthWireframe );
-	};
 
 	if ( n == "Bounding Sphere" ) {
 		auto sph = BoundSphere( nif, idx );
@@ -183,17 +146,14 @@ void BSMesh::drawSelection() const
 			}
 		}
 		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
-	} else if ( n == "Normals" ) {
+	} else if ( n == "Normals" || n == "Tangents" ) {
+		int	btnMask = ( n == "Normals" ? 0x04 : 0x03 );
 		int	s = -1;
 		if ( n == p )
 			s = idx.row();
-		lines( norms, s );
-	} else if ( n == "Tangents" ) {
-		int	s = -1;
-		if ( n == p )
-			s = idx.row();
-		lines( bitangents, s );
-		lines( tangents, s, true );
+		Shape::drawVerts( GLView::Settings::tbnPointSize, s );
+		float	normalScale = std::max< float >( boundSphere.radius / 8.0f, 2.5f / 512.0f ) * viewTrans().scale;
+		Shape::drawNormals( btnMask, s, normalScale );
 	} else if ( n == "Skin" ) {
 		auto	iSkin = nif->getBlockIndex( nif->getLink( idx.parent(), "Skin" ) );
 		if ( iSkin.isValid() && nif->isNiBlock( iSkin, "BSSkin::Instance" ) ) {
@@ -252,11 +212,11 @@ void BSMesh::drawSelection() const
 				Shape::drawTriangles( triangleOffset, triangleCount, FloatVector4( j ) / 255.0f );
 				triangleOffset += triangleCount;
 			}
-			Shape::drawWireframe( FloatVector4( Color4(cfg.wireframe) ).blendValues( FloatVector4( 0.125f ), 0x08 ) );
+			Shape::drawWireframe( FloatVector4( 0.125f ).blendValues( scene->wireframeColor, 0x07 ) );
 			glDepthFunc( GL_LEQUAL );
 		} else {
 			// General wireframe
-			Shape::drawWireframe( FloatVector4( Color4(cfg.wireframe) ) );
+			Shape::drawWireframe( scene->wireframeColor );
 		}
 
 		if ( s >= 0 && ( n == "Triangles" || n == "Meshlets" ) ) {
@@ -265,7 +225,7 @@ void BSMesh::drawSelection() const
 
 			if ( n == "Triangles" ) {
 				// draw selected triangle
-				Shape::drawTriangles( s, 1, FloatVector4( Color4(cfg.highlight) ) );
+				Shape::drawTriangles( s, 1, scene->highlightColor );
 			} else if ( ( iMeshlets = nif->getIndex( idx.parent().parent(), "Meshlets" ) ).isValid() ) {
 				// draw selected meshlet
 				qsizetype	triangleOffset = 0;
@@ -274,7 +234,7 @@ void BSMesh::drawSelection() const
 					triangleOffset += triangleCount;
 					triangleCount = nif->get<quint32>( nif->getIndex( iMeshlets, i ), "Triangle Count" );
 				}
-				Shape::drawTriangles( triangleOffset, triangleCount, FloatVector4( Color4(cfg.highlight) ) );
+				Shape::drawTriangles( triangleOffset, triangleCount, scene->highlightColor );
 			}
 		}
 	}
