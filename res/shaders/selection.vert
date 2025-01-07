@@ -10,6 +10,7 @@ uniform vec4 highlightColor;
 
 // bit 0 = Scene::selecting
 // bit 1 = vertex mode (drawing points instead of triangles)
+// bit 2 = triangle selection mode (primitive ID << 15 is added to the color)
 // bits 8 to 15 = point size * 8 (0: do not draw smooth points)
 uniform int selectionFlags;
 // if Scene::selecting == false: vertex selected (-1: none)
