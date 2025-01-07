@@ -9,8 +9,4 @@ checkgroup begin or
 	check BSShaderNoLightingProperty
 checkgroup end
 
-texcoords 0 base
-texcoords 1 tangents
-texcoords 2 bitangents
-
 shaders ob_default.vert ob_default.frag

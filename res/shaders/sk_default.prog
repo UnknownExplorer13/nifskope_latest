@@ -10,10 +10,4 @@ checkgroup begin or
 	check BSTriShape/Vertex Desc & 0x800000000000
 checkgroup end
 
-texcoords 0 base
-texcoords 1 tangents
-texcoords 2 bitangents
-texcoords 3 indices
-texcoords 4 weights
-
 shaders sk_default.vert sk_default.frag

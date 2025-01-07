@@ -19,6 +19,4 @@ checkgroup begin or
 	checkgroup end
 checkgroup end
 
-texcoords 0 base
-
 shaders sk_msn.vert sk_msn.frag
