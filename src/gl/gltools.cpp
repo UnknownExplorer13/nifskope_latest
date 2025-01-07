@@ -455,7 +455,7 @@ void Scene::drawPoints( const Vector3 * positions, size_t numVerts )
 	if ( !prog || numVerts < 1 )
 		return;
 	NifSkopeOpenGLContext *	context = renderer;
-	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( currentGLColor ) );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( currentGLColor ) );
 	prog->uni1i( "selectionParam", -1 );
 	prog->uni1i( "numBones", 0 );
 
@@ -490,12 +490,9 @@ void Scene::drawLine( const Vector3 & a, const Vector3 & b )
 	if ( !prog )
 		return;
 	NifSkopeOpenGLContext *	context = renderer;
-	prog->uni3m( "normalMatrix", Matrix() );
 	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix * Transform( a, b - a ) );
-	prog->uni4f( "vertexColorOverride", FloatVector4( 0.00000001f ).maxValues( currentGLColor ) );
-	prog->uni1i( "selectionParam", -1 );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( currentGLColor ) );
 	prog->uni1f( "lineWidth", currentGLLineWidth );
-	prog->uni1i( "numBones", 0 );
 
 	if ( selecting ) {
 		glDisable( GL_BLEND );
@@ -517,11 +514,8 @@ void Scene::drawLines( const Vector3 * positions, size_t numVerts, const FloatVe
 	if ( !prog )
 		return;
 	NifSkopeOpenGLContext *	context = renderer;
-	prog->uni3m( "normalMatrix", Matrix() );
 	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
-	prog->uni1i( "selectionParam", -1 );
 	prog->uni1f( "lineWidth", currentGLLineWidth );
-	prog->uni1i( "numBones", 0 );
 
 	if ( selecting ) {
 		glDisable( GL_BLEND );
@@ -539,7 +533,7 @@ void Scene::drawLines( const Vector3 * positions, size_t numVerts, const FloatVe
 		color = FloatVector4( 0.0f );
 	} else {
 		context->bindShape( (unsigned int) numVerts, 0x03, 0, attrData, nullptr );
-		color.maxValues( FloatVector4( 0.00000001f ) );
+		color.maxValues( FloatVector4( 1.0e-15f ) );
 	}
 	prog->uni4f( "vertexColorOverride", color );
 	context->fn->glDrawArrays( GLenum( elementMode ), 0, GLsizei( numVerts ) );
@@ -581,7 +575,7 @@ void Scene::drawTriangles( const Vector3 * positions, size_t numVerts, const Flo
 		elementDataSize = elementDataSize * numElements;
 	}
 
-	FloatVector4	color = FloatVector4( 0.00000001f ).maxValues( currentGLColor );
+	FloatVector4	color = FloatVector4( 1.0e-15f ).maxValues( currentGLColor );
 	const float *	attrData[2];
 	attrData[0] = &( positions[0][0] );
 	unsigned int	attrMask = 0x03;
@@ -924,31 +918,39 @@ void Scene::drawArc( const Vector3 & c, const Vector3 & x, const Vector3 & y, fl
 	popModelViewMatrix();
 }
 
+Matrix4 Scene::calculateTransform( const Vector3 & c, const Vector3 & n, float xyScale )
+{
+	FloatVector4	m[4];
+
+	FloatVector4	normal = FloatVector4::convertVector3( &( n[0] ) );
+	FloatVector4	n2 = normal * normal;
+	float	tmp = ( n2[2] < ( n2[0] + n2[1] ) ? 0.0f : 1.0f );
+	m[1] = normal.crossProduct3( FloatVector4( tmp, 0.0f, 1.0f - tmp, 0.0f ) ).normalize();
+	m[0] = m[1].crossProduct3( normal ).normalize() * xyScale;
+	m[1] *= xyScale;
+	m[2] = normal;
+	m[3] = FloatVector4::convertVector3( &( c[0] ) );
+	m[3][3] = 1.0f;
+
+	return Matrix4( &( m[0][0] ) );
+}
+
 void Scene::drawCone( const Vector3 & c, Vector3 n, float a, int sd )
 {
 	Vector3 *	positions = allocateVertexAttr( size_t( sd ) * 4 );
 	if ( !positions )
 		return;
 
-	pushAndMultModelViewMatrix( Transform( c, 1.0f ) );
+	pushAndMultModelViewMatrix( calculateTransform( c, n * std::cos( a ), n.length() * std::sin( a ) ) );
 
-	Vector3 x = Vector3::crossproduct( n, Vector3( n[1], n[2], n[0] ) );
-	Vector3 y = Vector3::crossproduct( n, x );
-
-	x = x * std::sin( a );
-	y = y * std::sin( a );
-	n = n * std::cos( a );
-
-	Vector3	p0;
-	for ( int i = 0; i <= sd; i++ ) {
-		float	f = ( 2.0f * PI * float(i) / float(sd) );
-		Vector3	p1 = n + x * std::sin( f ) + y * std::cos( f );
-		if ( i > 0 ) {
-			positions[i * 4 - 4] = Vector3();
-			positions[i * 4 - 3] = p0;
-			positions[i * 4 - 2] = p0;
-			positions[i * 4 - 1] = p1;
-		}
+	Vector3	p0( 1.0f, 0.0f, 1.0f );
+	for ( int i = 0; i < sd; i++ ) {
+		float	f = ( 2.0f * PI * float(i + 1) / float(sd) );
+		Vector3	p1( std::cos( f ), std::sin( f ), 1.0f );
+		positions[i * 4] = Vector3();
+		positions[i * 4 + 1] = p0;
+		positions[i * 4 + 2] = p0;
+		positions[i * 4 + 3] = p1;
 		p0 = p1;
 	}
 
@@ -963,26 +965,24 @@ void Scene::drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const
 	if ( !positions )
 		return;
 
-	pushAndMultModelViewMatrix( Transform( pivot, 1.0f ) );
+	FloatVector4	m[4];
+	m[2] = FloatVector4::convertVector3( &( twist[0] ) );	// z
+	m[1] = FloatVector4::convertVector3( &( plane[0] ) );	// y
+	m[0] = m[2].crossProduct3( m[1] ) * float( std::sin( coneAngle ) );	// x
+	m[3] = FloatVector4::convertVector3( &( pivot[0] ) );	// translation
+	m[3][3] = 1.0f;
+	pushAndMultModelViewMatrix( Matrix4( &( m[0][0] ) ) );
 
-	Vector3 z = twist;
-	Vector3 y = plane;
-	Vector3 x = Vector3::crossproduct( z, y );
-
-	x = x * std::sin( coneAngle );
-
-	Vector3	p0;
-	for ( int i = 0; i <= sd; i++ ) {
-		float	f = ( 2.0f * PI * float(i) / float(sd) );
-		Vector3	xy = x * std::sin( f )
-					+ y * std::sin( f <= PI / 2 || f >= 3 * PI / 2 ? maxPlaneAngle : -minPlaneAngle ) * std::cos( f );
-		Vector3	p1 = z * std::sqrt( std::max( 1.0f - xy.squaredLength(), 0.0f ) ) + xy;
-		if ( i > 0 ) {
-			positions[i * 4 - 4] = Vector3();
-			positions[i * 4 - 3] = p0;
-			positions[i * 4 - 2] = p0;
-			positions[i * 4 - 1] = p1;
-		}
+	Vector3	p0( 0.0f, std::sin( maxPlaneAngle ), 1.0f );
+	for ( int i = 0; i < sd; i++ ) {
+		float	f = ( 2.0f * PI * float(i + 1) / float(sd) );
+		float	x = std::sin( f );
+		float	y = std::sin( f <= PI / 2 || f >= 3 * PI / 2 ? maxPlaneAngle : -minPlaneAngle ) * std::cos( f );
+		Vector3	p1( x, y, 1.0f );
+		positions[i * 4] = Vector3();
+		positions[i * 4 + 1] = p0;
+		positions[i * 4 + 2] = p0;
+		positions[i * 4 + 3] = p1;
 		p0 = p1;
 	}
 
@@ -990,52 +990,28 @@ void Scene::drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const
 	popModelViewMatrix();
 }
 
-void Scene::drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd, bool solid )
+void Scene::drawSpring( const Vector3 & a, const Vector3 & b, float stiffness, int sd, [[maybe_unused]] bool solid )
 {
-	// draw a spring with stiffness turns
-	bool cull = glIsEnabled( GL_CULL_FACE );
-	glDisable( GL_CULL_FACE );
+	// draw a spring with stiffness turns (TODO: implement solid mode)
+	int	m = int( stiffness * sd );
+	if ( sd < 1 || m < 1 )
+		return;
+	size_t	numVerts = size_t( m ) + 3;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
 
-	Vector3 h = b - a;
+	pushAndMultModelViewMatrix( calculateTransform( a, b - a, ( b - a ).length() / 5.0f ) );
 
-	float r = h.length() / 5;
-
-	Vector3 n = h;
-	n.normalize();
-
-	Vector3 x = Vector3::crossproduct( n, Vector3( n[1], n[2], n[0] ) );
-	Vector3 y = Vector3::crossproduct( n, x );
-
-	x.normalize();
-	y.normalize();
-
-	x *= r;
-	y *= r;
-
-	glBegin( GL_LINES );
-	glVertex( a );
-	glVertex( a + x * sinf( 0 ) + y * cosf( 0 ) );
-	glEnd();
-	glBegin( solid ? GL_QUAD_STRIP : GL_LINE_STRIP );
-	int m = int(stiffness * sd);
-
+	positions[0] = Vector3();
 	for ( int i = 0; i <= m; i++ ) {
-		float f = 2 * PI * float(i) / float(sd);
-
-		glVertex( a + h * i / m + x * sinf( f ) + y * cosf( f ) );
-
-		if ( solid )
-			glVertex( a + h * i / m + x * 0.8f * sinf( f ) + y * 0.8f * cosf( f ) );
+		float f = 2.0f * PI * float( i ) / float( sd );
+		positions[i + 1] = Vector3( std::cos( f ), std::sin( f ), float( i ) / float( m ) );
 	}
+	positions[m + 2] = Vector3( 0.0f, 0.0f, 1.0f );
 
-	glEnd();
-	glBegin( GL_LINES );
-	glVertex( b + x * sinf( 2 * PI * float(m) / float(sd) ) + y * cosf( 2 * PI * float(m) / float(sd) ) );
-	glVertex( b );
-	glEnd();
-
-	if ( cull )
-		glEnable( GL_CULL_FACE );
+	drawLineStrip( positions, numVerts );
+	popModelViewMatrix();
 }
 
 void Scene::drawRail( const Vector3 & a, const Vector3 & b )
@@ -1052,31 +1028,40 @@ void Scene::drawRail( const Vector3 & a, const Vector3 & b )
 
 	x.normalize();
 
-	glBegin( GL_POINTS );
-	glVertex( a );
-	glVertex( b );
-	glEnd();
+	int	len = std::min< int >( std::max< int >( int( off.length() ), 1 ), 32000 );
+	size_t	numVerts = size_t( len + 1 ) * 2 + 4;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
+
+	Transform	t( a, 1.0f );
+	t.rotation( 0, 0 ) = x[0];
+	t.rotation( 0, 2 ) = off[0];
+	t.rotation( 1, 0 ) = x[1];
+	t.rotation( 1, 2 ) = off[1];
+	t.rotation( 2, 0 ) = x[2];
+	t.rotation( 2, 2 ) = off[2];
+	pushAndMultModelViewMatrix( t );
+
+	positions[0] = Vector3( 0.0f, 0.0f, 0.0f );
+	positions[1] = Vector3( 0.0f, 0.0f, 1.0f );
+	drawPoints( positions, 2 );
 
 	/* draw the rail */
-	glBegin( GL_LINES );
-	glVertex( a + x );
-	glVertex( b + x );
-	glVertex( a - x );
-	glVertex( b - x );
-	glEnd();
-
-	int len = int( off.length() );
+	positions[0] = Vector3( 1.0f, 0.0f, 0.0f );
+	positions[1] = Vector3( 1.0f, 0.0f, 1.0f );
+	positions[2] = Vector3( -1.0f, 0.0f, 0.0f );
+	positions[3] = Vector3( -1.0f, 0.0f, 1.0f );
 
 	/* draw the logs */
-	glBegin( GL_LINES );
-
 	for ( int i = 0; i <= len; i++ ) {
 		float rel_off = ( 1.0f * i ) / len;
-		glVertex( a + off * rel_off + x * 1.3f );
-		glVertex( a + off * rel_off - x * 1.3f );
+		positions[i * 2 + 4] = Vector3( 1.3f, 0.0f, rel_off );
+		positions[i * 2 + 5] = Vector3( -1.3f, 0.0f, rel_off );
 	}
 
-	glEnd();
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
 }
 
 void Scene::drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & x, const Vector3 & y,
@@ -1217,106 +1202,93 @@ void Scene::drawSphere( const Vector3 & c, float r, int sd )
 
 void Scene::drawCapsule( const Vector3 & a, const Vector3 & b, float r, int sd )
 {
-	Vector3 d = b - a;
-
-	if ( d.length() < 0.001 ) {
-		drawSphere( a, r );
+	if ( !drawCylinder( a, b, r, sd ) )
 		return;
+
+	int	s2 = std::max< int >( ( sd + 1 ) & ~1, 2 );
+	sd = std::max< int >( sd * 2, 4 );
+	size_t	numVerts = size_t( sd ) * size_t( s2 - 1 ) * 2;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return;
+
+	Vector3 *	p = positions;
+	float	prvX = 1.0f;
+	float	prvY = 0.0f;
+	for ( int i = 0; i < sd; i++ ) {
+		float	x = std::cos( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		float	y = std::sin( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		float	prvZ = 1.0f;
+		float	prvW = 0.0f;
+		for ( int j = 0; true; j++, p = p + 2 ) {
+			float	z = std::cos( PI * ( float( j + 1 ) / float( s2 ) ) );
+			float	w = std::sqrt( std::max( 1.0f - z * z, 0.0f ) );
+			p[0] = Vector3( prvX * prvW, prvY * prvW, prvZ );
+			p[1] = Vector3( prvX * w, prvY * w, z );
+			p = p + 2;
+			if ( ( j + 1 ) >= ( s2 >> 1 ) )
+				break;
+			p[0] = Vector3( prvX * w, prvY * w, z );
+			p[1] = Vector3( x * w, y * w, z );
+			prvZ = z;
+			prvW = w;
+		}
+		prvX = x;
+		prvY = y;
 	}
 
-	Vector3 n = d;
-	n.normalize();
+	Vector3	d = b - a;
+	d = ( d / d.length() ) * r;
 
-	Vector3 x( n[1], n[2], n[0] );
-	Vector3 y = Vector3::crossproduct( n, x );
-	x = Vector3::crossproduct( n, y );
+	pushAndMultModelViewMatrix( calculateTransform( a, d * -1.0f, r ) );
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
 
-	x *= r;
-	y *= r;
-
-	glBegin( GL_LINE_STRIP );
-
-	for ( int i = 0; i <= sd * 2; i++ )
-		glVertex( a + d / 2 + x * sin( PI / sd * i ) + y * cos( PI / sd * i ) );
-
-	glEnd();
-	glBegin( GL_LINES );
-
-	for ( int i = 0; i <= sd * 2; i++ ) {
-		glVertex( a + x * sin( PI / sd * i ) + y * cos( PI / sd * i ) );
-		glVertex( b + x * sin( PI / sd * i ) + y * cos( PI / sd * i ) );
-	}
-
-	glEnd();
-
-	for ( int j = 0; j <= sd; j++ ) {
-		float f = PI * float(j) / float(sd * 2);
-		Vector3 dj = n * r * cos( f );
-		float rj = sin( f );
-
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( a - dj + x * sin( PI / sd * i ) * rj + y * cos( PI / sd * i ) * rj );
-
-		glEnd();
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( b + dj + x * sin( PI / sd * i ) * rj + y * cos( PI / sd * i ) * rj );
-
-		glEnd();
-	}
+	pushAndMultModelViewMatrix( calculateTransform( b, d, r ) );
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
 }
 
-void Scene::drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd )
+bool Scene::drawCylinder( const Vector3 & a, const Vector3 & b, float r, int sd )
 {
-	Vector3 d = b - a;
+	Vector3	d = b - a;
 
-	if ( d.length() < 0.001 ) {
+	float	l = d.length();
+	if ( l < 0.001f ) {
 		drawSphere( a, r );
-		return;
+		return false;
 	}
 
-	Vector3 n = d;
-	n.normalize();
+	sd = std::max< int >( sd * 2, 4 );
+	size_t	numVerts = size_t( sd ) * 8;
+	Vector3 *	positions = allocateVertexAttr( numVerts );
+	if ( !positions )
+		return true;
 
-	Vector3 x( n[1], n[2], n[0] );
-	Vector3 y = Vector3::crossproduct( n, x );
-	x = Vector3::crossproduct( n, y );
+	pushAndMultModelViewMatrix( calculateTransform( a, d, r ) );
 
-	x *= r;
-	y *= r;
-
-	glBegin( GL_LINE_STRIP );
-
-	for ( int i = 0; i <= sd * 2; i++ )
-		glVertex( a + d / 2 + x * std::sin( PI / sd * i ) + y * std::cos( PI / sd * i ) );
-
-	glEnd();
-	glBegin( GL_LINES );
-
-	for ( int i = 0; i <= sd * 2; i++ ) {
-		glVertex( a + x * std::sin( PI / sd * i ) + y * std::cos( PI / sd * i ) );
-		glVertex( b + x * std::sin( PI / sd * i ) + y * std::cos( PI / sd * i ) );
+	Vector3 *	p = positions;
+	float	prvX = 1.0f;
+	float	prvY = 0.0f;
+	for ( int i = 0; i < sd; i++, p = p + 8 ) {
+		float	x = std::cos( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		float	y = std::sin( PI * 2.0f * ( float( i + 1 ) / float( sd ) ) );
+		p[0] = Vector3( prvX, prvY, 0.0f );
+		p[1] = Vector3( x, y, 0.0f );
+		p[2] = Vector3( prvX, prvY, 0.5f );
+		p[3] = Vector3( x, y, 0.5f );
+		p[4] = Vector3( prvX, prvY, 1.0f );
+		p[5] = Vector3( x, y, 1.0f );
+		p[6] = Vector3( prvX, prvY, 0.0f );
+		p[7] = Vector3( prvX, prvY, 1.0f );
+		prvX = x;
+		prvY = y;
 	}
 
-	glEnd();
+	drawLines( positions, numVerts );
+	popModelViewMatrix();
 
-	for ( int j = 0; j <= sd; j++ ) {
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( a + x * std::sin( PI / sd * i ) + y * std::cos( PI / sd * i ) );
-
-		glEnd();
-		glBegin( GL_LINE_STRIP );
-
-		for ( int i = 0; i <= sd * 2; i++ )
-			glVertex( b + x * std::sin( PI / sd * i ) + y * std::cos( PI / sd * i ) );
-
-		glEnd();
-	}
+	return true;
 }
 
 void Scene::drawDashLine( const Vector3 & a, const Vector3 & b, int sd )
@@ -1564,26 +1536,7 @@ void Scene::drawCMS( const NifModel * nif, const QModelIndex & iShape, bool soli
 }
 
 // Renders text using the font initialized in the primary view class
-void renderText( const Vector3 & c, const QString & str )
+void Scene::renderText( [[maybe_unused]] const Vector3 & c, [[maybe_unused]] const QString & str )
 {
-	renderText( c[0], c[1], c[2], str );
-}
-
-void renderText( double x, double y, double z, const QString & str )
-{
-	glPushAttrib( GL_ALL_ATTRIB_BITS );
-
-	glDisable( GL_TEXTURE_1D );
-	glDisable( GL_TEXTURE_2D );
-	glDisable( GL_CULL_FACE );
-
-	glRasterPos3d( x, y, z );
-	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
-	glEnable( GL_BLEND );
-	glAlphaFunc( GL_GREATER, 0.0 );
-	glEnable( GL_ALPHA_TEST );
-
-	QByteArray cstr( str.toLatin1() );
-	glCallLists( cstr.size(), GL_UNSIGNED_BYTE, cstr.constData() );
-	glPopAttrib();
+	// TODO: implement this function
 }

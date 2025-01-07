@@ -981,8 +981,6 @@ void Mesh::drawSelection() const
 	glDepthFunc( GL_LEQUAL );
 	glNormalColor();
 
-	glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
-
 	if ( n == "Vertices" || n == "Normals" || n == "Vertex Colors"
 		|| n == "UV Sets" || n == "Tangents" || n == "Bitangents" )
 	{

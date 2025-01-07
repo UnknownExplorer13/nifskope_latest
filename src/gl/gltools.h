@@ -257,10 +257,6 @@ inline GLuint glClosestMatch( GLuint * buffer, GLint hits )
 }
 #endif
 
-// FIXME: these functions do not seem to be fully implemented
-[[deprecated]] void renderText( double x, double y, double z, const QString & str );
-[[deprecated]] void renderText( const Vector3 & c, const QString & str );
-
 static inline FloatVector4 getColorKeyFromID( int id )
 {
 	return FloatVector4( std::uint32_t( id + 1 ) ) * ( 1.0f / 255.0f ) + ( 1.0f / 1024.0f );
