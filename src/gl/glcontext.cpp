@@ -374,10 +374,16 @@ bool NifSkopeOpenGLContext::Shader::load( const QString & filepath )
 }
 
 
+inline size_t NifSkopeOpenGLContext::Program::getUniLocationMapAllocSize( unsigned int m )
+{
+	size_t	n = size_t( m ) + 1;
+	return ( n << 1 ) - ( n >> 2 );
+}
+
 NifSkopeOpenGLContext::Program::Program( const std::string_view & n, GLFunctions * fn )
 	: Shader( n, 0, fn ), nextProgram( nullptr )
 {
-	uniLocationsMap = new UniformLocationMapItem[64];
+	uniLocationsMap = new UniformLocationMapItem[getUniLocationMapAllocSize( 63 )];
 	uniLocationsMapMask = 63;
 	uniLocationsMapSize = 0;
 	id = f->glCreateProgram();
@@ -402,7 +408,8 @@ void NifSkopeOpenGLContext::Program::clear()
 	isProgram = true;
 	uniLocationsMapSize = 0;
 	nextProgram = nullptr;
-	for ( size_t i = 0; i <= uniLocationsMapMask; i++ )
+	size_t	n = getUniLocationMapAllocSize( uniLocationsMapMask );
+	for ( size_t i = 0; i < n; i++ )
 		(void) new( &(uniLocationsMap[i]) ) UniformLocationMapItem();
 }
 
@@ -526,7 +533,7 @@ inline std::uint32_t NifSkopeOpenGLContext::Program::UniformLocationMapItem::has
 	return h;
 }
 
-int NifSkopeOpenGLContext::Program::storeUniformLocation( const UniformLocationMapItem & o, size_t i )
+int NifSkopeOpenGLContext::Program::storeUniformLocation( UniformLocationMapItem & o )
 {
 	const char *	fmt = o.fmt;
 	int	arg1 = int( o.args & 0xFFFF );
@@ -562,21 +569,21 @@ int NifSkopeOpenGLContext::Program::storeUniformLocation( const UniformLocationM
 	}
 	*sp = '\0';
 	int	l = f->glGetUniformLocation( id, varNameBuf );
-	uniLocationsMap[i] = o;
-	uniLocationsMap[i].l = l;
+	o.l = l;
 #ifndef QT_NO_DEBUG
 	if ( l < 0 )
 		std::fprintf( stderr, "[Warning] Uniform '%s' not found\n", varNameBuf );
 #endif
 
 	uniLocationsMapSize++;
-	if ( ( uniLocationsMapSize * size_t(3) ) > ( uniLocationsMapMask * size_t(2) ) ) {
+	if ( ( uniLocationsMapSize * size_t(3) ) > ( uniLocationsMapMask * size_t(2) ) ) [[unlikely]] {
 		unsigned int	m = ( uniLocationsMapMask << 1 ) | 0xFFU;
-		UniformLocationMapItem *	tmpBuf = new UniformLocationMapItem[m + 1U];
-		for ( size_t j = 0; j <= uniLocationsMapMask; j++ ) {
+		size_t	n = getUniLocationMapAllocSize( uniLocationsMapMask );
+		UniformLocationMapItem *	tmpBuf = new UniformLocationMapItem[getUniLocationMapAllocSize( m )];
+		for ( size_t j = 0; j < n; j++ ) {
 			size_t	k = uniLocationsMap[j].hashFunction() & m;
 			while ( tmpBuf[k].fmt )
-				k = ( k + 1 ) & m;
+				k++;
 			tmpBuf[k] = uniLocationsMap[j];
 		}
 		delete[] uniLocationsMap;
@@ -587,64 +594,47 @@ int NifSkopeOpenGLContext::Program::storeUniformLocation( const UniformLocationM
 	return l;
 }
 
+inline int NifSkopeOpenGLContext::Program::uniLocation( const UniformLocationMapItem & key )
+{
+	UniformLocationMapItem *	p = uniLocationsMap + ( key.hashFunction() & uniLocationsMapMask );
+	if ( *p == key )
+		return p->l;
+	for ( ; p->fmt; p++ ) {
+		if ( *( p + 1 ) == key ) {
+			std::swap( *p, *( p + 1 ) );
+			return p->l;
+		}
+	}
+	*p = key;
+	return storeUniformLocation( *p );
+}
+
 int NifSkopeOpenGLContext::Program::uniLocation( const char * fmt )
 {
 	UniformLocationMapItem	key( fmt, 0 );
 
-	size_t	hashMask = uniLocationsMapMask;
-	size_t	i = key.hashFunction() & hashMask;
-	for ( ; uniLocationsMap[i].fmt; i = (i + 1) & hashMask ) {
-		if ( uniLocationsMap[i] == key )
-			return uniLocationsMap[i].l;
-	}
-
-	return storeUniformLocation( key, i );
+	return uniLocation( key );
 }
 
 int NifSkopeOpenGLContext::Program::uniLocation( const char * fmt, int argsX16Y16 )
 {
 	UniformLocationMapItem	key( fmt, argsX16Y16 );
 
-	size_t	hashMask = uniLocationsMapMask;
-	size_t	i = key.hashFunction() & hashMask;
-	for ( ; uniLocationsMap[i].fmt; i = (i + 1) & hashMask ) {
-		if ( uniLocationsMap[i] == key )
-			return uniLocationsMap[i].l;
-	}
-
-	return storeUniformLocation( key, i );
+	return uniLocation( key );
 }
 
 void NifSkopeOpenGLContext::Program::uni1i( const char * name, int x )
 {
 	UniformLocationMapItem	key( name, 0 );
 
-	size_t	hashMask = uniLocationsMapMask;
-	size_t	i = key.hashFunction() & hashMask;
-	for ( ; uniLocationsMap[i].fmt; i = (i + 1) & hashMask ) {
-		if ( uniLocationsMap[i] == key ) {
-			f->glUniform1i( uniLocationsMap[i].l, x );
-			return;
-		}
-	}
-
-	f->glUniform1i( storeUniformLocation( key, i ), x );
+	f->glUniform1i( uniLocation( key ), x );
 }
 
 void NifSkopeOpenGLContext::Program::uni1f( const char * name, float x )
 {
 	UniformLocationMapItem	key( name, 0 );
 
-	size_t	hashMask = uniLocationsMapMask;
-	size_t	i = key.hashFunction() & hashMask;
-	for ( ; uniLocationsMap[i].fmt; i = (i + 1) & hashMask ) {
-		if ( uniLocationsMap[i] == key ) {
-			f->glUniform1f( uniLocationsMap[i].l, x );
-			return;
-		}
-	}
-
-	f->glUniform1f( storeUniformLocation( key, i ), x );
+	f->glUniform1f( uniLocation( key ), x );
 }
 
 void NifSkopeOpenGLContext::Program::uni1b_l( int l, bool x )
@@ -925,20 +915,21 @@ void NifSkopeOpenGLContext::updateShaders( int maxNumBones )
 		dir.cd( "/usr/share/nifskope/shaders" );
 #endif
 
-	for ( const QString & name : dir.entryList() ) {
-		Shader *	shader = createShader( name );
-		if ( shader ) {
+	QStringList	entryList = dir.entryList();
+	for ( int i = 0; i < 2; i++ ) {
+		for ( const QString & name : entryList ) {
+			bool	isProgram = name.endsWith( QLatin1StringView( ".prog" ), Qt::CaseInsensitive );
+			if ( isProgram != bool( i ) )
+				continue;
+			Shader *	shader = createShader( name );
+			if ( !shader )
+				continue;
+			QString	fullPath = dir.filePath( name );
 			shader->maxNumBones = std::uint16_t( maxNumBones );
 			if ( !shader->isProgram )
-				shader->load( dir.filePath( name ) );
-		}
-	}
-
-	for ( size_t i = 0; i <= shaderHashMask; i++ ) {
-		Shader *	s = shadersAndPrograms[i];
-		if ( s && s->id && s->isProgram ) {
-			QString	name( QString::fromUtf8( s->name.data(), qsizetype( s->name.length() ) ) );
-			static_cast< Program * >( s )->load( dir.filePath( name ), this );
+				shader->load( fullPath );
+			else
+				static_cast< Program * >( shader )->load( fullPath, this );
 		}
 	}
 }
@@ -962,12 +953,16 @@ NifSkopeOpenGLContext::Program * NifSkopeOpenGLContext::useProgram( const std::s
 {
 	std::uint32_t	m = shaderHashMask;
 	std::uint32_t	h = hashFunctionUInt32( name.data(), name.length() ) & m;
+	std::uint32_t	prvH = h;
 	Shader *	s;
 	for ( ; ( s = shadersAndPrograms[h] ) != nullptr; h = ( h + 1 ) & m ) {
 		if ( s->isProgram && s->name == name )
 			break;
+		prvH = h;
 	}
 	if ( s && s->status ) [[likely]] {
+		if ( h != prvH )
+			std::swap( shadersAndPrograms[prvH], shadersAndPrograms[h] );
 		Program *	prog = static_cast< Program * >( s );
 		fn->glUseProgram( prog->id );
 		currentProgram = prog;
@@ -1029,32 +1024,32 @@ void NifSkopeOpenGLContext::bindShape(
 	if ( ( cacheShapeCnt * 3U ) >= ( geometryCache.size() * 2U ) ) [[unlikely]]
 		rehashCache();
 
-	ShapeData *	d = nullptr;
+	GLFunctions &	f = *fn;
+
 	std::uint32_t	m = std::uint32_t( geometryCache.size() - 1 );
 	std::uint32_t	i = h.hashFunction() & m;
+	std::uint32_t	j = i;
 	for ( ; geometryCache[i]; i = ( i + 1 ) & m ) {
 		if ( geometryCache[i]->h == h ) {
-			d = geometryCache[i];
-			break;
+			ShapeData *	d = geometryCache[i];
+			if ( i != j )
+				std::swap( geometryCache[j], geometryCache[i] );
+			if ( d != cacheLastItem ) {
+				d->prev->next = d->next;
+				d->next->prev = d->prev;
+				d->prev = cacheLastItem;
+				d->next = cacheLastItem->next;
+				d->prev->next = d;
+				d->next->prev = d;
+			}
+			cacheLastItem = d;
+			f.glBindVertexArray( d->vao );
+			return;
 		}
+		j = i;
 	}
 
-	GLFunctions &	f = *fn;
-	if ( d ) {
-		if ( d != cacheLastItem ) {
-			d->prev->next = d->next;
-			d->next->prev = d->prev;
-			d->prev = cacheLastItem;
-			d->next = cacheLastItem->next;
-			d->prev->next = d;
-			d->next->prev = d;
-		}
-		cacheLastItem = d;
-		f.glBindVertexArray( d->vao );
-		return;
-	}
-
-	d = new ShapeData( *this, h, attrData, elementData );
+	ShapeData *	d = new ShapeData( *this, h, attrData, elementData );
 	if ( !cacheLastItem ) {
 		d->prev = d;
 		d->next = d;

@@ -159,7 +159,9 @@ private:
 		UniformLocationMapItem *	uniLocationsMap;
 		unsigned int	uniLocationsMapMask;
 		unsigned int	uniLocationsMapSize;
-		int storeUniformLocation( const UniformLocationMapItem & o, size_t i );
+		static inline size_t getUniLocationMapAllocSize( unsigned int m );
+		int storeUniformLocation( UniformLocationMapItem & o );
+		inline int uniLocation( const UniformLocationMapItem & key );
 public:
 		Program *	nextProgram;
 
