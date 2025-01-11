@@ -578,7 +578,7 @@ void GLView::paintGL()
 		scene->loadModelViewMatrix( viewTrans );
 		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.25f );
 		scene->setGLLineWidth( Settings::lineWidthAxes );
-		scene->drawSphere( bs.center, bs.radius );
+		scene->drawSphereSimple( bs.center, bs.radius, 72, 6 );
 	}
 
 	// Color Key debug
@@ -609,7 +609,7 @@ void GLView::paintGL()
 		auto fr = 250.0;
 		GLdouble h2 = tan( cfg.fov / 360 * M_PI ) * nr;
 		GLdouble w2 = h2;
-		for ( auto prog = scene->useProgram( "lines.prog" ); prog; prog = nullptr ) {
+		if ( auto prog = scene->useProgram( "lines.prog" ); prog ) {
 			prog->uni4m( "projectionMatrix", Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr ) );
 			// update viewport dimensions
 			prog->uni4fv( "lightSourceDiffuse", cx->lightSourceDiffuse, 3 );

@@ -494,11 +494,10 @@ void spFlipTexCoords::flip_Starfield( NifModel * nif, const QModelIndex & index,
 			std::swap( v[0], v[1] );
 		break;
 	case 3:
-		for ( auto uvs2Index = nif->getIndex( index, "UVs 2" ); uvs2Index.isValid(); ) {
+		if ( auto uvs2Index = nif->getIndex( index, "UVs 2" ); uvs2Index.isValid() ) {
 			QVector< HalfVector2 >	uvs2 = nif->getArray< HalfVector2 >( uvs2Index );
 			nif->setArray< HalfVector2 >( uvs2Index, uvs );
 			uvs = uvs2;
-			break;
 		}
 		break;
 	}
@@ -1297,10 +1296,9 @@ void spRemoveWasteVertices::cast_Starfield( NifModel * nif, const QModelIndex & 
 	}
 
 	// update array sizes
-	for ( auto i = nif->getItem( index ); i; ) {
+	if ( auto i = nif->getItem( index ); i ) {
 		i->invalidateVersionCondition();
 		i->invalidateCondition();
-		break;
 	}
 	numVerts -= std::uint32_t( verticesRemoved );
 	numUVs = std::min( numUVs, numVerts );
@@ -1528,7 +1526,7 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 	FloatVector4	bndDims( -1.0f );
 	QModelIndex	iBoneList;
 	int	numBones = 0;
-	for ( auto iSkin = nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ); iSkin.isValid(); ) {
+	if ( auto iSkin = nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ); iSkin.isValid() ) {
 		bounds.center = Vector3( 0.0f, 0.0f, 0.0f );
 		bounds.radius = 0.0f;
 		bndCenter = FloatVector4( float(FLT_MAX) );
@@ -1539,7 +1537,6 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 			if ( iBoneList.isValid() && nif->isArray( iBoneList ) )
 				numBones = nif->rowCount( iBoneList );
 		}
-		break;
 	}
 	for ( int i = 0; i <= 3; i++ ) {
 		auto mesh = nif->getIndex( meshes, i );
@@ -1670,10 +1667,9 @@ REGISTER_SPELL( spUpdateAllBounds )
 
 void spGenerateMeshlets::clearMeshlets( NifModel * nif, const QModelIndex & iMeshData )
 {
-	for ( auto i = nif->getItem( iMeshData ); i; ) {
+	if ( auto i = nif->getItem( iMeshData ); i ) {
 		i->invalidateVersionCondition();
 		i->invalidateCondition();
-		break;
 	}
 	nif->set<quint32>( iMeshData, "Num Meshlets", 0 );
 	QModelIndex	i;

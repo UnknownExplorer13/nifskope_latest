@@ -1108,7 +1108,7 @@ bool UVWidget::setNifData( NifModel * nifModel, const QModelIndex & nifIndex )
 			return false;
 
 		int	sfMeshLOD = 0;
-		for ( auto w = dynamic_cast< NifSkope * >( nif->getWindow() ); w; w = nullptr ) {
+		if ( auto w = dynamic_cast< NifSkope * >( nif->getWindow() ); w ) {
 			auto	ogl = w->getGLView();
 			if ( ogl && ogl->getScene() )
 				sfMeshLOD = ogl->getScene()->lodLevel;

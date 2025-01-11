@@ -841,10 +841,8 @@ void ExportGltfMaterials::exportMaterial( tinygltf::Material & mat, const std::s
 		return;
 
 	const CE2Material::Layer *	layer = nullptr;
-	for ( int i = std::countr_zero< std::uint32_t >( material->layerMask ); i < CE2Material::maxLayers; ) {
+	if ( int i = std::countr_zero< std::uint32_t >( material->layerMask ); i < CE2Material::maxLayers )
 		layer = material->layers[i];
-		break;
-	}
 	if ( !( layer && layer->material && layer->material->textureSet ) )
 		return;
 
@@ -936,10 +934,8 @@ void exportGltf( const NifModel* nif, const Scene* scene, [[maybe_unused]] const
 			extras["Material Path"] = tinygltf::Value( mat.name );
 			mat.extras = tinygltf::Value(extras);
 			if ( !useFullMatPaths ) {
-				for ( size_t n = mat.name.rfind('/'); n != std::string::npos; ) {
+				if ( size_t n = mat.name.rfind('/'); n != std::string::npos )
 					mat.name.erase( 0, n + 1 );
-					break;
-				}
 			}
 			if ( mat.name.ends_with(".mat") )
 				mat.name.resize( mat.name.length() - 4 );
@@ -1151,7 +1147,7 @@ void ImportGltf::loadSkin( const QPersistentModelIndex & index, const tinygltf::
 {
 	QPersistentModelIndex	iSkinBMP = nif->insertNiBlock( "SkinAttach" );
 	nif->set<QString>( iSkinBMP, "Name", "SkinBMP" );
-	for ( auto iNumExtraData = nif->getIndex( index, "Num Extra Data List" ); iNumExtraData.isValid(); ) {
+	if ( auto iNumExtraData = nif->getIndex( index, "Num Extra Data List" ); iNumExtraData.isValid() ) {
 		quint32	n = nif->get<quint32>( iNumExtraData );
 		nif->set<quint32>( iNumExtraData, n + 1 );
 		auto	iExtraData = nif->getIndex( index, "Extra Data List" );
@@ -1159,7 +1155,6 @@ void ImportGltf::loadSkin( const QPersistentModelIndex & index, const tinygltf::
 			nif->updateArraySize( iExtraData );
 			nif->setLink( nif->getIndex( iExtraData, int(n) ), qint32( nif->getBlockNumber(iSkinBMP) ) );
 		}
-		break;
 	}
 
 	QPersistentModelIndex	iSkin = nif->insertNiBlock( "BSSkin::Instance" );
@@ -1171,25 +1166,22 @@ void ImportGltf::loadSkin( const QPersistentModelIndex & index, const tinygltf::
 
 	size_t	numBones = skin.joints.size();
 	nif->set<quint32>( iSkinBMP, "Num Bones", quint32(numBones) );
-	for ( auto iBones = nif->getIndex( iSkinBMP, "Bones" ); iBones.isValid(); ) {
+	if ( auto iBones = nif->getIndex( iSkinBMP, "Bones" ); iBones.isValid() ) {
 		nif->updateArraySize( iBones );
 		NifItem *	bonesItem = nif->getItem( iBones );
-		if ( !bonesItem )
-			break;
-		for ( size_t i = 0; i < numBones; i++ ) {
-			int	j = skin.joints[i];
-			if ( j >= 0 && size_t(j) < model.nodes.size() )
-				nif->set<QString>( bonesItem->child( int(i) ), QString::fromStdString(model.nodes[j].name) );
+		if ( bonesItem ) {
+			for ( size_t i = 0; i < numBones; i++ ) {
+				int	j = skin.joints[i];
+				if ( j >= 0 && size_t(j) < model.nodes.size() )
+					nif->set<QString>( bonesItem->child( int(i) ), QString::fromStdString(model.nodes[j].name) );
+			}
 		}
-		break;
 	}
 	nif->set<quint32>( iSkin, "Num Bones", quint32(numBones) );
-	for ( auto iBones = nif->getIndex( iSkin, "Bones" ); iBones.isValid(); ) {
+	if ( auto iBones = nif->getIndex( iSkin, "Bones" ); iBones.isValid() )
 		nif->updateArraySize( iBones );
-		break;
-	}
 	nif->set<quint32>( iBoneData, "Num Bones", quint32(numBones) );
-	for ( auto iBones = nif->getIndex( iBoneData, "Bone List" ); iBones.isValid(); ) {
+	if ( auto iBones = nif->getIndex( iBoneData, "Bone List" ); iBones.isValid() ) {
 		nif->updateArraySize( iBones );
 		std::vector< float >	boneTransforms;
 		(void) loadBuffer< float >( boneTransforms, skin.inverseBindMatrices, TINYGLTF_TYPE_MAT4 );
@@ -1235,7 +1227,6 @@ void ImportGltf::loadSkin( const QPersistentModelIndex & index, const tinygltf::
 			if ( iBone.isValid() )
 				t.writeBack( nif, iBone );
 		}
-		break;
 	}
 }
 
@@ -1309,10 +1300,9 @@ void ImportGltf::loadSkinnedLODMesh( const QPersistentModelIndex & index, const 
 		return;
 	}
 
-	for ( auto i = nif->getItem( iMeshData ); i; ) {
+	if ( auto i = nif->getItem( iMeshData ); i ) {
 		i->invalidateVersionCondition();
 		i->invalidateCondition();
-		break;
 	}
 	nif->set<quint32>( iMeshData, "Num LODs", quint32(lod) );
 	QModelIndex	iLODMesh = nif->getIndex( iMeshData, "LODs" );
@@ -1665,7 +1655,7 @@ void ImportGltf::loadNode( const QPersistentModelIndex & index, int nodeNum, boo
 		if ( meshPrim ) {
 			QPersistentModelIndex	iMaterialID = nif->insertNiBlock( "NiIntegerExtraData" );
 			nif->set<QString>( iMaterialID, "Name", "MaterialID" );
-			for ( auto iNumExtraData = nif->getIndex( iBlock, "Num Extra Data List" ); iNumExtraData.isValid(); ) {
+			if ( auto iNumExtraData = nif->getIndex( iBlock, "Num Extra Data List" ); iNumExtraData.isValid() ) {
 				quint32	n = nif->get<quint32>( iNumExtraData );
 				nif->set<quint32>( iNumExtraData, n + 1 );
 				auto	iExtraData = nif->getIndex( iBlock, "Extra Data List" );
@@ -1673,7 +1663,6 @@ void ImportGltf::loadNode( const QPersistentModelIndex & index, int nodeNum, boo
 					nif->updateArraySize( iExtraData );
 					nif->setLink( nif->getIndex( iExtraData, int(n) ), qint32( nif->getBlockNumber(iMaterialID) ) );
 				}
-				break;
 			}
 
 			std::string	materialPath;
