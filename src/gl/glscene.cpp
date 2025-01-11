@@ -232,6 +232,9 @@ void Scene::updateLodLevel( int level )
 	if ( Game::GameManager::get_game( nifModel ) != Game::STARFIELD )
 		level = std::min( level, 2 );
 	lodLevel = LodLevel( level );
+
+	for ( Shape * s : shapes )
+		s->updateLodLevel();
 }
 
 void Scene::make( NifModel * nif, bool flushTextures )
