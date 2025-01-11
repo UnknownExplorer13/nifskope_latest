@@ -25,6 +25,7 @@ uniform float parallaxScale;
 uniform float glowMult;
 uniform vec4 glowColor;
 
+uniform float alpha;
 uniform int alphaTestFunc;
 uniform float alphaThreshold;
 
@@ -178,7 +179,7 @@ void main()
 		// Emissive
 		vec3 emissive = glowColor.rgb * glowMult;
 		if ( ( vertexColorFlags & 0x10 ) == 0 )
-			emissive *= frontMaterialEmission.rgb;
+			emissive *= frontMaterialEmission.rgb * frontMaterialEmission.a;
 		else
 			emissive *= C.rgb;
 		if ( hasGlowMap )
@@ -190,11 +191,13 @@ void main()
 		if ( hasSpecular && NdotL > 0.0 ) {
 			float NdotH = dot( normal, H );
 			if ( NdotH > 0.0 ) {
-				vec4 spec = frontMaterialSpecular * pow( NdotH, frontMaterialShininess );
-				color.rgb += spec.rgb * normalMap.a;
+				vec3 spec = frontMaterialSpecular.rgb * pow( NdotH, frontMaterialShininess );
+				color.rgb += spec * frontMaterialSpecular.a * normalMap.a;
 			}
 		}
 	}
+
+	color.a *= alpha;
 
 	if ( alphaTestFunc > 0 ) {
 		if ( color.a < alphaThreshold && alphaTestFunc != 1 && alphaTestFunc != 3 && alphaTestFunc != 5 )
