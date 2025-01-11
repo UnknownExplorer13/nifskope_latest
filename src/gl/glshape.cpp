@@ -57,8 +57,6 @@ void Shape::clear()
 	resetVertexData();
 	resetSkeletonData();
 
-	sortedTriangles.clear();
-
 	bssp = nullptr;
 	bslsp = nullptr;
 	bsesp = nullptr;
@@ -89,12 +87,6 @@ void Shape::transform()
 
 void Shape::updateBoneTransforms()
 {
-	if ( !partitions.isEmpty() ) {
-		// TODO: implement partitions
-		transformRigid = true;
-		return;
-	}
-
 	qsizetype	numBones = boneData.size();
 	if ( numBones < 1 ) {
 		transformRigid = true;
@@ -105,14 +97,17 @@ void Shape::updateBoneTransforms()
 
 	Node * root = findParent( skeletonRoot );
 
+	boundSphere = BoundSphere();
+
 	for ( qsizetype i = 0; i < numBones; i++ ) {
 		const BoneData &	bw = boneData.at( i );
 		Node * bone = root ? root->findChild( bw.bone ) : nullptr;
-		Transform	t = bw.trans;
+		Transform	t = skeletonTrans;
 		if ( bone )
-			t = skeletonTrans * bone->localTrans( skeletonRoot ) * t;
-		else
-			t = skeletonTrans * t;
+			t = t * bone->localTrans( skeletonRoot );
+		boundSphere |= BoundSphere( t * bw.center, t.scale * bw.radius );
+		t = t * bw.trans;
+
 		FloatVector4 *	bt = boneTransforms.data() + ( i * 3 );
 		bt[0] = FloatVector4::convertVector3( t.rotation.data() ) * t.scale;
 		bt[0][3] = t.translation[0];
@@ -122,7 +117,9 @@ void Shape::updateBoneTransforms()
 		bt[2][3] = t.translation[2];
 	}
 
-	transVerts = verts;
+#if 0
+	// precise bounding sphere calculation using transformed vertex positions
+	QVector< Vector3 >	transVerts = verts;
 	Vector3 *	p = transVerts.data();
 	qsizetype	numVerts = transVerts.size();
 	int	numWeights = ( boneWeights1.size() < numVerts ? 4 : 8 );
@@ -160,24 +157,52 @@ void Shape::updateBoneTransforms()
 	}
 
 	boundSphere = BoundSphere( transVerts );
+#endif
+
 	boundSphere.applyInv( worldTrans() );
 	needUpdateBounds = false;
+}
+
+void Shape::convertTriangleStrip( const void * indicesData, size_t numIndices )
+{
+	qsizetype	numTriangles = 0;
+	const quint16 *	indices = nullptr;
+	if ( numIndices >= 3 && indicesData ) {
+		indices = reinterpret_cast< const quint16 * >( indicesData );
+		for ( size_t i = 2; i < numIndices; i++ ) {
+			if ( indices[i - 2] != indices[i - 1] && indices[i - 2] != indices[i] && indices[i - 1] != indices[i] )
+				numTriangles++;
+		}
+	}
+	qsizetype	j = triangles.size();
+	triangles.resize( j + numTriangles );
+	tristripOffsets.append( std::pair< qsizetype, qsizetype >( j, numTriangles ) );
+	Triangle *	triangleData = triangles.data();
+	for ( size_t i = 2; i < numIndices && j < triangles.size(); i++ ) {
+		if ( indices[i - 2] != indices[i - 1] && indices[i - 2] != indices[i] && indices[i - 1] != indices[i] ) {
+			if ( !( i & 1 ) )
+				triangleData[j] = Triangle( indices[i - 2], indices[i - 1], indices[i] );
+			else
+				triangleData[j] = Triangle( indices[i - 2], indices[i], indices[i - 1] );
+			j++;
+		}
+	}
 }
 
 void Shape::removeInvalidIndices()
 {
 	qsizetype	numVerts = verts.size();
-	qsizetype	numTriangles = sortedTriangles.size();
+	qsizetype	numTriangles = triangles.size();
 	// validate triangles' vertex indices, throw out triangles with the wrong ones
 	for ( qsizetype i = 0; i < numTriangles; i++ ) {
-		const Triangle &	t = sortedTriangles.at( i );
+		const Triangle &	t = triangles.at( i );
 		qsizetype	maxVertex = std::max( t[0], std::max( t[1], t[2] ) );
 		if ( maxVertex < numVerts ) [[likely]]
 			continue;
 		auto	minVertex = std::min( t[0], std::min( t[1], t[2] ) );
 		if ( qsizetype( minVertex ) >= numVerts )
 			minVertex = 0;
-		Triangle &	tmp = sortedTriangles[i];
+		Triangle &	tmp = triangles[i];
 		if ( qsizetype( tmp[0] ) >= numVerts )
 			tmp[0] = minVertex;
 		if ( qsizetype( tmp[1] ) >= numVerts )
@@ -272,7 +297,8 @@ void Shape::drawNormals( int btnMask, int vertexSelected, float lineLength ) con
 void Shape::drawWireframe( FloatVector4 color ) const
 {
 	auto	context = scene->renderer;
-	if ( !context || sortedTriangles.isEmpty() )
+	qsizetype	n = std::min< qsizetype >( lodTriangleCount, triangles.size() );
+	if ( !context || n < 1 )
 		return;
 	auto	prog = context->useProgram( "wireframe.prog" );
 	if ( !prog )
@@ -283,7 +309,7 @@ void Shape::drawWireframe( FloatVector4 color ) const
 	prog->uni1i( "selectionParam", -1 );
 	prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe );
 
-	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( n * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 }
 
 void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
@@ -293,9 +319,9 @@ void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
 		i = 0;
 	}
 	auto	context = scene->renderer;
-	if ( !context || n < 1 || i >= sortedTriangles.size() )
+	if ( !context || n < 1 || i >= triangles.size() )
 		return;
-	n = std::min< qsizetype >( n, sortedTriangles.size() - i );
+	n = std::min< qsizetype >( n, triangles.size() - i );
 	auto	prog = context->useProgram( "selection.prog" );
 	if ( !prog )
 		return;
@@ -407,7 +433,8 @@ void Shape::resetVertexData()
 	bitangents.clear();
 	coords.clear();
 	triangles.clear();
-	tristrips.clear();
+	lodTriangleCount = 0;
+	tristripOffsets.clear();
 }
 
 void Shape::resetSkeletonData()
@@ -422,7 +449,6 @@ void Shape::resetSkeletonData()
 	bones.clear();
 	boneData.clear();
 	partitions.clear();
-	transVerts.clear();
 }
 
 void Shape::updateShader()
@@ -506,7 +532,7 @@ bool Shape::bindShape() const
 		return false;
 
 	qsizetype	numVerts = verts.size();
-	qsizetype	numTriangles = sortedTriangles.size();
+	qsizetype	numTriangles = triangles.size();
 	if ( !( numVerts > 0 && numTriangles > 0 ) ) [[unlikely]]
 		return false;
 
@@ -556,10 +582,10 @@ bool Shape::bindShape() const
 	size_t	elementDataSize = size_t( numTriangles ) * sizeof( Triangle );
 	if ( !( dataHash.attrMask && numVerts == dataHash.numVerts && elementDataSize == dataHash.elementBytes ) ) {
 		dataHash = NifSkopeOpenGLContext::ShapeDataHash( std::uint32_t( numVerts ), attrModeMask, elementDataSize,
-															vertexAttrs, sortedTriangles.constData() );
+															vertexAttrs, triangles.constData() );
 	}
 
-	context->bindShape( dataHash, vertexAttrs, sortedTriangles.constData() );
+	context->bindShape( dataHash, vertexAttrs, triangles.constData() );
 
 	return true;
 }

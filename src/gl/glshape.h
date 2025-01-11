@@ -62,6 +62,7 @@ public:
 	// end IControllable
 
 	void updateBoneTransforms();
+	void convertTriangleStrip( const void * indicesData, size_t numIndices );
 	void removeInvalidIndices();
 	void drawVerts( float pointSize, int vertexSelected ) const;
 	// btnMask & 1 = draw bitangents, btnMask & 2 = draw tangents, btnMask & 4 = draw normals
@@ -74,7 +75,8 @@ public:
 	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;
 	bool bindShape() const;
 
-	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); };
+	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); }
+	virtual void updateLodLevel() { lodTriangleCount = triangles.size(); }
 
 protected:
 	int shapeNumber;
@@ -115,15 +117,20 @@ protected:
 	QVector<TexCoords> coords;
 	//! Triangles
 	QVector<Triangle> triangles;
-	//! Strip points
-	QVector<TriStrip> tristrips;
-	//! Sorted triangles
-	QVector<Triangle> sortedTriangles;
+	//! Number of triangles to render at the current level of detail
+	qsizetype lodTriangleCount = 0;
+	//! Offsets and lengths of converted triangle strips in triangles
+	QVector< std::pair<qsizetype, qsizetype> > tristripOffsets;
+
+	bool isLOD = false;
 
 	void resetVertexData();
 
+	//! Toggle for skinning
+	bool isSkinned = false;
 	//! Is the transform rigid or weighted?
 	bool transformRigid = true;
+
 	//! Bone transforms as 4x3 matrices in row-major order
 	QVector<FloatVector4> boneTransforms;
 	//! Bone weights 0 to 3 (integer part = bone index, fractional part = weight * 65535.0 / 65536.0), terminated by 0.0
@@ -131,16 +138,11 @@ protected:
 	//! Bone weights 4 to 7 (may be empty if the maximum number of weights per vertex is 4 or less)
 	QVector<FloatVector4> boneWeights1;
 
-	//! Toggle for skinning
-	bool isSkinned = false;
-
 	int skeletonRoot = 0;
 	Transform skeletonTrans;
 	QVector<int> bones;
 	QVector<BoneData> boneData;
 	QVector<SkinPartition> partitions;
-	// temporary buffer for bounding sphere calculation
-	QVector<Vector3> transVerts;
 
 	void resetSkeletonData();
 
@@ -170,10 +172,8 @@ protected:
 
 	void updateShader();
 
-	mutable BoundSphere boundSphere;
 	mutable bool needUpdateBounds = false;
-
-	bool isLOD = false;
+	mutable BoundSphere boundSphere;
 
 	mutable NifSkopeOpenGLContext::ShapeDataHash	dataHash;
 
