@@ -142,35 +142,8 @@ void BSShape::updateData( const NifModel * nif )
 		if ( iTriData.isValid() )
 			triangles = nif->getArray<Triangle>( iTriData );
 	}
-	qsizetype	numTriangles = triangles.size();
-	if ( isLOD && numTriangles > 0 ) {
-		auto lod0 = nif->get<uint>( iBlock, "LOD0 Size" );
-		auto lod1 = nif->get<uint>( iBlock, "LOD1 Size" );
-		auto lod2 = nif->get<uint>( iBlock, "LOD2 Size" );
-
-		// If Level2, render all
-		// If Level1, also render Level0
-		numTriangles = 0;
-		switch ( scene->lodLevel ) {
-		case Scene::Level0:
-			numTriangles = qsizetype( lod2 );
-			[[fallthrough]];
-		case Scene::Level1:
-			numTriangles += qsizetype( lod1 );
-			[[fallthrough]];
-		case Scene::Level2:
-		default:
-			numTriangles += qsizetype( lod0 );
-			break;
-		}
-	}
-	if ( numTriangles >= triangles.size() )
-		sortedTriangles = triangles;
-	else if ( numTriangles > 0 )
-		sortedTriangles = triangles.mid( 0, numTriangles );
-	else
-		sortedTriangles.clear();
 	removeInvalidIndices();
+	updateLodLevel();
 
 	// Fill skeleton data
 	resetSkeletonData();
@@ -284,7 +257,8 @@ void BSShape::drawShapes( NodeList * secondPass )
 		glPolygonOffset( 1.0f, 2.0f );
 
 	auto	context = scene->renderer;
-	GLsizei	numIndices = GLsizei( sortedTriangles.size() * 3 );
+
+	qsizetype	numTriangles = std::clamp< qsizetype >( lodTriangleCount, 0, triangles.size() );
 
 	if ( !scene->selecting ) [[likely]] {
 		if ( nif->getBSVersion() >= 151 )
@@ -305,9 +279,8 @@ void BSShape::drawShapes( NodeList * secondPass )
 		}
 	}
 
-	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( numIndices ), GL_UNSIGNED_SHORT, (void *) 0 );
-
-	context->stopProgram();
+	if ( numTriangles > 0 )
+		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( numTriangles * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
 }
@@ -488,8 +461,8 @@ void BSShape::drawSelection() const
 	if ( btnMask ) {
 		int	s = scene->currentIndex.parent().row();
 		Shape::drawVerts( GLView::Settings::tbnPointSize, s );
-		float	normalScale = std::max< float >( bounds().radius / 16.0f, 0.25f ) * viewTrans().scale;
-		Shape::drawNormals( btnMask, s, normalScale );
+		float	normalScale = std::max< float >( bounds().radius / ( btnMask == 0x04 ? 8.0f : 16.0f ), 0.25f );
+		Shape::drawNormals( btnMask, s, normalScale * viewTrans().scale );
 	}
 
 	// Draw Triangles
@@ -498,7 +471,7 @@ void BSShape::drawSelection() const
 		if ( n == p )
 			s = idx.row();
 		Shape::drawWireframe( scene->wireframeColor );
-		if ( s >= 0 && s < sortedTriangles.size() )
+		if ( s >= 0 && s < triangles.size() )
 			Shape::drawTriangles( s, 1, scene->highlightColor );
 	}
 
@@ -593,11 +566,9 @@ void BSShape::drawSelection() const
 			}
 		}
 
-		return;
-	}
+	} else if ( n == "NiSkinData" || n == "BSSkin::BoneData" ) {
+		// Draw all bones' bounding spheres
 
-	// Draw all bones' bounding spheres
-	if ( n == "NiSkinData" || n == "BSSkin::BoneData" ) {
 		// Get shape block
 		if ( nif->getBlockIndex( nif->getParent( nif->getParent( blk ) ) ) == iBlock ) {
 			auto iBones = nif->getIndex( blk, "Bone List" );
@@ -608,23 +579,23 @@ void BSShape::drawSelection() const
 				boneSphere( nif, b );
 			}
 		}
-		return;
-	}
 
-	// Draw bone bounding sphere
-	if ( n == "Bone List" ) {
-		if ( nif->isArray( idx ) ) {
-			for ( int i = 0; i < nif->rowCount( idx ); i++ )
-				boneSphere( nif, nif->getIndex( idx, i ) );
-		} else {
-			boneSphere( nif, idx );
+	} else {
+		// Draw bone bounding sphere
+		if ( n == "Bone List" ) {
+			if ( nif->isArray( idx ) ) {
+				for ( int i = 0; i < nif->rowCount( idx ); i++ )
+					boneSphere( nif, nif->getIndex( idx, i ) );
+			} else {
+				boneSphere( nif, idx );
+			}
+			bindShape();
 		}
-		bindShape();
-	}
 
-	// General wireframe
-	if ( blk == iBlock && idx != iData && p != "Vertex Data" && p != "Vertices" && n != "Triangles" )
-		Shape::drawWireframe( scene->wireframeColor );
+		// General wireframe
+		if ( blk == iBlock && idx != iData && p != "Vertex Data" && p != "Vertices" && n != "Triangles" )
+			Shape::drawWireframe( scene->wireframeColor );
+	}
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
 	glDisable( GL_POLYGON_OFFSET_LINE );
@@ -643,4 +614,33 @@ BoundSphere BSShape::bounds() const
 	}
 
 	return worldTrans() * boundSphere;
+}
+
+void BSShape::updateLodLevel()
+{
+	auto	nif = scene->nifModel;
+	qsizetype	numTriangles = triangles.size();
+	if ( isLOD && nif && numTriangles > 0 ) {
+		auto lod0 = nif->get<uint>( iBlock, "LOD0 Size" );
+		auto lod1 = nif->get<uint>( iBlock, "LOD1 Size" );
+		auto lod2 = nif->get<uint>( iBlock, "LOD2 Size" );
+
+		// If Level2, render all
+		// If Level1, also render Level0
+		numTriangles = 0;
+		switch ( scene->lodLevel ) {
+		case Scene::Level0:
+			numTriangles = qsizetype( lod2 );
+			[[fallthrough]];
+		case Scene::Level1:
+			numTriangles += qsizetype( lod1 );
+			[[fallthrough]];
+		case Scene::Level2:
+		default:
+			numTriangles += qsizetype( lod0 );
+			break;
+		}
+		numTriangles = std::clamp< qsizetype >( numTriangles, 0, triangles.size() );
+	}
+	lodTriangleCount = numTriangles;
 }

@@ -73,9 +73,8 @@ void BSMesh::drawShapes( NodeList * secondPass )
 		}
 	}
 
-	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( sortedTriangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( triangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 
-	context->stopProgram();
 	glDisable( GL_POLYGON_OFFSET_FILL );
 }
 
@@ -119,7 +118,7 @@ void BSMesh::drawSelection() const
 	// Name of this index's parent
 	auto p = idx.parent().data( NifSkopeDisplayRole ).toString();
 
-	qsizetype	numTriangles = sortedTriangles.size();
+	qsizetype	numTriangles = triangles.size();
 
 	if ( n == "Bounding Sphere" ) {
 		auto sph = BoundSphere( nif, idx );
@@ -409,11 +408,12 @@ void BSMesh::updateData(const NifModel* nif)
 	if ( lodCount > int(lodLevel) ) {
 		auto& mesh = meshes[meshIndex];
 		if ( lodLevel > 0 && int(lodLevel) <= mesh->lods.size() ) {
-			sortedTriangles = mesh->lods[lodLevel - 1];
+			triangles = mesh->lods[lodLevel - 1];
 		}
 		else {
-			sortedTriangles = mesh->triangles;
+			triangles = mesh->triangles;
 		}
+		lodTriangleCount = triangles.size();
 		verts = mesh->positions;
 		removeInvalidIndices();
 		coords.resize( mesh->coords2.isEmpty() ? 1 : 2 );
