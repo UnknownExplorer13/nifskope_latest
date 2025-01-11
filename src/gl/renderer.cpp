@@ -104,13 +104,15 @@ NifSkopeOpenGLContext::Program * Renderer::setupProgram( Shape * mesh, Program *
 {
 	const NifModel *	nif = mesh->scene->nifModel;
 	if ( nif == nullptr || nif->getBSVersion() == 0 ) {
+		useProgram( "default.prog" );
 		setupFixedFunction( mesh );
 		return currentProgram;
 	}
 
-	if ( hint && hint->status ) {
+	if ( hint && hint->status ) [[likely]] {
 		Program * program = hint;
 		fn->glUseProgram( program->id );
+		currentProgram = program;
 		bool	setupStatus;
 		if ( nif->getBSVersion() >= 170 )
 			setupStatus = setupProgramCE2( nif, program, mesh );
@@ -138,6 +140,7 @@ NifSkopeOpenGLContext::Program * Renderer::setupProgram( Shape * mesh, Program *
 	for ( Program * program = programsLinked; program; program = program->nextProgram ) {
 		if ( !program->conditions.isEmpty() && program->conditions.eval( nif, iBlocks ) ) {
 			fn->glUseProgram( program->id );
+			currentProgram = program;
 			bool	setupStatus;
 			if ( nif->getBSVersion() >= 170 )
 				setupStatus = setupProgramCE2( nif, program, mesh );
@@ -151,6 +154,7 @@ NifSkopeOpenGLContext::Program * Renderer::setupProgram( Shape * mesh, Program *
 		}
 	}
 
+	useProgram( "default.prog" );
 	setupFixedFunction( mesh );
 	return currentProgram;
 }
@@ -903,8 +907,6 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 
 	// setup blending
 
-	int	alphaTestFunc = -1;
-	float	alphaThreshold = 0.0f;
 	if ( mat ) {
 		static const GLenum blendMap[11] = {
 			GL_ONE, GL_ZERO, GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR,
@@ -919,10 +921,14 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 			glDisable( GL_BLEND );
 		}
 
+		int	alphaTestFunc = -1;
+		float	alphaThreshold = 0.0f;
 		if ( mat->hasAlphaTest() && scene->hasOption(Scene::DoBlending) ) {
 			alphaTestFunc = 4;	// greater
 			alphaThreshold = float( mat->iAlphaTestRef ) / 255.0f;
 		}
+		prog->uni1i( "alphaTestFunc", alphaTestFunc );
+		prog->uni1f( "alphaThreshold", alphaThreshold );
 
 		if ( mat->bDecal ) {
 			glEnable( GL_POLYGON_OFFSET_FILL );
@@ -930,18 +936,17 @@ bool Renderer::setupProgramCE1( const NifModel * nif, Program * prog, Shape * me
 		}
 
 	} else {
-		alphaTestFunc = AlphaProperty::glProperty( alphaThreshold, mesh->alphaProperty );
 		// BSESP/BSLSP do not always need an NiAlphaProperty, and appear to override it at times
-		if ( mesh->translucent ) {
+		if ( mesh->translucent && scene->hasOption(Scene::DoBlending) ) {
 			glEnable( GL_BLEND );
-			glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
+			fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 			// If mesh is alpha tested, override threshold
-			alphaTestFunc = ( alphaTestFunc < 0 ? alphaTestFunc : 4 );
-			alphaThreshold = 0.1f;
+			prog->uni1i( "alphaTestFunc", ( mesh->alphaProperty && mesh->alphaProperty->hasAlphaTest() ? 4 : -1 ) );
+			prog->uni1f( "alphaThreshold", 0.1f );
+		} else {
+			AlphaProperty::glProperty( mesh->alphaProperty, prog );
 		}
 	}
-	prog->uni1i( "alphaTestFunc", alphaTestFunc );
-	prog->uni1f( "alphaThreshold", alphaThreshold );
 
 	if ( !mesh->depthTest ) {
 		glDisable( GL_DEPTH_TEST );
@@ -961,7 +966,6 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 	auto esp = mesh->bsesp;
 
 	// defaults for uniforms
-	int	vertexColorFlags = 40;	// LIGHT_MODE_EMI_AMB_DIF + VERT_MODE_SRC_AMB_DIF
 	bool	isDecal = false;
 	bool	hasSpecular = ( scene->hasOption( Scene::DoSpecular ) && scene->hasOption( Scene::DoLighting ) );
 	bool	hasEmit = false;
@@ -1127,11 +1131,26 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 		hasEmit = true;
 	}
 
-	for ( auto p = mesh->findProperty< VertexColorProperty >(); p; ) {
-		vertexColorFlags = ( ( p->lightmode & 1 ) << 3 ) | ( ( p->vertexmode & 3 ) << 4 );
-		break;
+	{
+		FloatVector4	vcOverride( 0.0f );
+		// Do VCs if legacy or if either bslsp or bsesp is set
+		bool	doVCs = ( !bsprop || bsprop->hasSF2(ShaderFlags::SLSF2_Vertex_Colors) || bsprop->bsVersion < 83 );
+
+		if ( !( mesh->colors.size() >= mesh->verts.size() && scene->hasOption(Scene::DoVertexColors) && doVCs ) ) {
+			vcOverride = FloatVector4( 1.0f );
+			if ( !mesh->hasVertexColors && ( mesh->bslsp && mesh->bslsp->hasVertexColors )
+				&& scene->hasOption(Scene::DoVertexColors) ) {
+				// Correctly blacken the mesh if SLSF2_Vertex_Colors is still on
+				//	yet "Has Vertex Colors" is not.
+				vcOverride.blendValues( FloatVector4( 1.0e-15f ), 0x07 );
+			}
+		}
+		// TODO (Gavrant): suspicious code. Should the check be replaced with !bsprop->hasVertexAlpha ?
+		if ( mesh->bslsp && !mesh->bslsp->hasSF1(ShaderFlags::SLSF1_Vertex_Alpha) )
+			vcOverride[3] = 1.0f;
+
+		VertexColorProperty::glProperty( mesh->findProperty< VertexColorProperty >(), vcOverride, prog );
 	}
-	prog->uni1i( "vertexColorFlags", vertexColorFlags );
 	prog->uni1b( "isEffect", bool(esp) );
 	prog->uni1b( "hasSpecular", hasSpecular );
 	prog->uni1b( "hasEmit", hasEmit );
@@ -1168,9 +1187,7 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 
 	// setup blending
 
-	float	alphaThreshold = 0.0f;
-	prog->uni1i( "alphaTestFunc", AlphaProperty::glProperty( alphaThreshold, mesh->alphaProperty ) );
-	prog->uni1f( "alphaThreshold", alphaThreshold );
+	AlphaProperty::glProperty( mesh->alphaProperty, prog );
 
 	if ( isDecal ) {
 		glEnable( GL_POLYGON_OFFSET_FILL );
@@ -1179,18 +1196,17 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 
 	// setup material
 
-	glProperty( mesh->findProperty< MaterialProperty >(), mesh->findProperty< SpecularProperty >() );
+	MaterialProperty::glProperty( mesh->findProperty< MaterialProperty >(), mesh->findProperty< SpecularProperty >(),
+									prog );
 
 	// setup Z buffer
 
-	for ( auto p = mesh->findProperty< ZBufferProperty >(); p; ) {
-		glProperty( p );
-		break;
-	}
+	if ( auto p = mesh->findProperty< ZBufferProperty >(); p )
+		ZBufferProperty::glProperty( p );
 
 	// setup stencil
 
-	glProperty( mesh->findProperty< StencilProperty >() );
+	StencilProperty::glProperty( mesh->findProperty< StencilProperty >() );
 
 	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 
@@ -1199,38 +1215,44 @@ bool Renderer::setupProgramFO3( const NifModel * nif, Program * prog, Shape * me
 
 void Renderer::setupFixedFunction( Shape * mesh )
 {
+	auto	prog = currentProgram;
+	if ( !( prog && ( prog->name == "default.prog" || prog->name == "particles.prog" ) ) ) {
+		if ( ( prog = useProgram( "default.prog" ) ) == nullptr )
+			return;
+	}
+
 	PropertyList props;
 	mesh->activeProperties( props );
 
-	// setup lighting
-
-	glEnable( GL_LIGHTING );
-
 	// Disable specular because it washes out vertex colors
 	//	at perpendicular viewing angles
-	float color[4] = { 0, 0, 0, 0 };
-	glMaterialfv( GL_FRONT_AND_BACK, GL_SPECULAR, color );
-	glLightfv( GL_LIGHT0, GL_SPECULAR, color );
+	prog->uni4f( "frontMaterialSpecular", FloatVector4( 0.0f ) );
 
 	// setup blending
 
-	glProperty( mesh->alphaProperty );
+	AlphaProperty::glProperty( mesh->alphaProperty, prog );
 
 	// setup vertex colors
 
-	glProperty( props.get<VertexColorProperty>(), glIsEnabled( GL_COLOR_ARRAY ) );
+	Scene *	scene = mesh->scene;
+
+	FloatVector4	vcOverride( 0.0f );
+	if ( mesh->colors.size() < mesh->verts.size() || !scene->hasOption(Scene::DoVertexColors) )
+		vcOverride = FloatVector4( 1.0f );
+
+	VertexColorProperty::glProperty( props.get<VertexColorProperty>(), vcOverride, prog );
 
 	// setup material
 
-	glProperty( props.get<MaterialProperty>(), props.get<SpecularProperty>() );
+	MaterialProperty::glProperty( props.get<MaterialProperty>(), props.get<SpecularProperty>(), prog );
 
 	// setup texturing
 
-	//glProperty( props.get< TexturingProperty >() );
+	//TexturingProperty::glProperty( props.get< TexturingProperty >() );
 
 	// setup z buffer
 
-	glProperty( props.get<ZBufferProperty>() );
+	ZBufferProperty::glProperty( props.get<ZBufferProperty>() );
 
 	if ( !mesh->depthTest ) {
 		glDisable( GL_DEPTH_TEST );
@@ -1242,214 +1264,61 @@ void Renderer::setupFixedFunction( Shape * mesh )
 
 	// setup stencil
 
-	glProperty( props.get<StencilProperty>() );
+	StencilProperty::glProperty( props.get<StencilProperty>() );
 
 	// wireframe ?
 
-	glProperty( props.get<WireframeProperty>() );
+	bool	isWireframe = WireframeProperty::glProperty( props.get<WireframeProperty>() );
 
-	// normalize
+	mesh->setUniforms( currentProgram );
 
-	if ( glIsEnabled( GL_NORMAL_ARRAY ) )
-		glEnable( GL_NORMALIZE );
-	else
-		glDisable( GL_NORMALIZE );
+	if ( isWireframe )
+		return;
 
 	// setup texturing
 
-	if ( !mesh->scene->hasOption(Scene::DoTexturing) )
-		return;
+	for ( int i = 0; i < TexturingProperty::numTextures; i++ ) {
+		prog->uni1i_l( prog->uniLocation( "textureUnits[%d]", i ), 0 );
+		prog->uni1i_l( prog->uniLocation( "textures[%d].textureUnit", i ), 0 );
+	}
 
 	int	stage = 0;
 
 	if ( TexturingProperty * texprop = props.get<TexturingProperty>() ) {
 		// standard multi texturing property
 
-		if ( texprop->bind( 1, mesh->coords, stage ) ) {
-			// dark
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
+		// base
+		stage += int( texprop->bind( 0, stage, prog ) );
 
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
+		// dark
+		stage += int( texprop->bind( 1, stage, prog ) );
 
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA );
+		// detail
+		stage += int( texprop->bind( 2, stage, prog ) );
 
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
+		// glow
+		stage += int( texprop->bind( 4, stage, prog ) );
 
-		if ( texprop->bind( 0, mesh->coords, stage ) ) {
-			// base
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
+		// decal 0
+		stage += int( texprop->bind( 6, stage, prog ) );
 
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
+		// decal 1
+		stage += int( texprop->bind( 7, stage, prog ) );
 
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA );
+		// decal 2
+		stage += int( texprop->bind( 8, stage, prog ) );
 
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
+		// decal 3
+		stage += int( texprop->bind( 9, stage, prog ) );
 
-		if ( texprop->bind( 2, mesh->coords, stage ) ) {
-			// detail
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 2.0 );
-		}
-
-		if ( texprop->bind( 6, mesh->coords, stage ) ) {
-			// decal 0
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_INTERPOLATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE2_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND2_RGB, GL_SRC_ALPHA );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
-
-		if ( texprop->bind( 7, mesh->coords, stage ) ) {
-			// decal 1
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_INTERPOLATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE2_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND2_RGB, GL_SRC_ALPHA );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
-
-		if ( texprop->bind( 8, mesh->coords, stage ) ) {
-			// decal 2
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_INTERPOLATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE2_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND2_RGB, GL_SRC_ALPHA );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
-
-		if ( texprop->bind( 9, mesh->coords, stage ) ) {
-			// decal 3
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_INTERPOLATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE2_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND2_RGB, GL_SRC_ALPHA );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
-
-		if ( texprop->bind( 4, mesh->coords, stage ) ) {
-			// glow
-			stage++;
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_ADD );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_REPLACE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
 	} else if ( TextureProperty * texprop = props.get<TextureProperty>() ) {
 		// old single texture property
-		texprop->bind( mesh->coords );
-		stage++;
-	} else if ( BSShaderLightingProperty * texprop = props.get<BSShaderLightingProperty>() ) {
-		// standard multi texturing property
-		if ( texprop->bind( 0, mesh->coords ) ) {
-			//, mesh->coords, stage ) )
-			stage++;
-			// base
-			glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_COMBINE );
+		stage += int( texprop->bind( prog ) );
+	}
 
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_RGB, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_RGB, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_RGB, GL_SRC_COLOR );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_RGB, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_RGB, GL_SRC_COLOR );
-
-			glTexEnvi( GL_TEXTURE_ENV, GL_COMBINE_ALPHA, GL_MODULATE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE0_ALPHA, GL_PREVIOUS );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA );
-			glTexEnvi( GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_TEXTURE );
-			glTexEnvi( GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA );
-
-			glTexEnvf( GL_TEXTURE_ENV, GL_RGB_SCALE, 1.0 );
-		}
-	} else {
-		glDisable( GL_TEXTURE_2D );
+	if ( !stage ) {
+		scene->textures->activateTextureUnit( 0 );
+		scene->textures->bind( white, scene->nifModel );
 	}
 }
 
