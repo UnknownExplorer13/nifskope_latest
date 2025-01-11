@@ -61,6 +61,7 @@ public:
 
 	void drawVerts() const;
 	QModelIndex vertexAt( int ) const override;
+	void updateLodLevel() override;
 
 protected:
 	void updateImpl( const NifModel * nif, const QModelIndex & index ) override;
