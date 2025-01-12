@@ -1217,7 +1217,7 @@ void importObjMain( NifModel * nif, const QModelIndex & index, bool collision )
 			bounds.update( nif, iData );
 
 			// do not stitch, because it looks better in the cs
-			QVector<QVector<quint16> > strips = stripify( triangles );
+			QVector<QVector<quint16> > strips = stripify( triangles, false );
 
 			nif->set<int>( iData, "Num Strips", strips.count() );
 			nif->set<int>( iData, "Has Points", 1 );
