@@ -668,21 +668,21 @@ bool NifModel::updateByteArraySize( NifItem * array )
 {
 	// TODO (Gavrant): I don't understand what's going on here, rewrite the function
 
-	int nNewSize = evalArraySize( array );
-	int nOldRows = array->childCount();
-	if ( nNewSize == 0 )
+	qsizetype nNewSize = evalArraySize( array );
+	if ( nNewSize < 0 )
 		return false;
 
 	// Create byte array for holding blob data
 	QByteArray bytes;
-	bytes.resize( nNewSize );
 
 	// Previous row count
+	int nOldRows = array->childCount();
 
 	// Grab data from existing rows if appropriate and then purge
-	if ( nOldRows > 1 ) {
+	if ( nOldRows > 1 || ( nOldRows == 1 && array->child( 0 ) && !array->child( 0 )->isBinary() ) ) {
+		bytes.resize( nOldRows );
 		for ( int i = 0; i < nOldRows; i++ ) {
-			if ( NifItem * child = array->child( 0 ) ) {
+			if ( NifItem * child = array->child( i ) ) {
 				bytes[i] = get<quint8>( child );
 			}
 		}
@@ -695,7 +695,7 @@ bool NifModel::updateByteArraySize( NifItem * array )
 	}
 
 	// Create the dummy row for holding the byte array
-	if ( nOldRows == 0 ) {
+	if ( nOldRows < 1 ) {
 		NifData data( array->name(), array->strType(), array->templ(), NifValue( NifValue::tBlob ), addConditionParentPrefix( array->arg() ) );
 		data.setBinary( true );
 
@@ -709,11 +709,16 @@ bool NifModel::updateByteArraySize( NifItem * array )
 	if ( NifItem * child = array->child( 0 ) ) {
 		QByteArray * bm = child->isBinary() ? get<QByteArray *>( child ) : nullptr;
 		if ( !bm ) {
+			if ( nNewSize > bytes.size() )
+				bytes.append( nNewSize - bytes.size(), 0 );
 			set<QByteArray>( child, bytes );
-		} else if ( bm->size() == 0 ) {
-			*bm = bytes;
-		} else {
-			bm->resize( nNewSize );
+		} else if ( qsizetype oldSize = bm->size(); oldSize != nNewSize ) {
+			if ( bm->isEmpty() )
+				*bm = bytes;
+			if ( nNewSize > oldSize )
+				bm->append( nNewSize - oldSize, 0 );
+			else
+				bm->resize( nNewSize );
 		}
 	}
 
