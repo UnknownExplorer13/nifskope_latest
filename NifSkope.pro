@@ -29,7 +29,7 @@ contains(QT_VERSION, ^6\\.[0-1]\\..*) {
 CONFIG += c++20
 
 # Dependencies
-CONFIG += nvtristrip qhull gli libfo76utils
+CONFIG += qhull gli libfo76utils
 
 # Debug/Release options
 contains(debug, 1) {
@@ -330,6 +330,7 @@ SOURCES += \
 	lib/meshoptimizer/src/clusterizer.cpp \
 	lib/meshoptimizer/src/simplifier.cpp \
 	lib/meshoptimizer/src/spatialorder.cpp \
+	lib/meshoptimizer/src/stripifier.cpp \
 	lib/meshoptimizer/src/vcacheoptimizer.cpp
 
 RESOURCES += \
@@ -349,18 +350,6 @@ FORMS += \
 ###############################
 ## DEPENDENCY SCOPES
 ###############################
-
-nvtristrip {
-	INCLUDEPATH += lib/NvTriStrip
-	HEADERS += \
-		lib/NvTriStrip/NvTriStrip.h \
-		lib/NvTriStrip/NvTriStripObjects.h \
-		lib/NvTriStrip/VertexCache.h
-	SOURCES += \
-		lib/NvTriStrip/NvTriStrip.cpp \
-		lib/NvTriStrip/NvTriStripObjects.cpp \
-		lib/NvTriStrip/VertexCache.cpp
-}
 
 qhull {
     !*msvc*:QMAKE_CFLAGS += -Ilib/qhull/src
