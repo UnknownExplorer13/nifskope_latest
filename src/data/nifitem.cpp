@@ -33,6 +33,15 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nifitem.h"
 #include "model/basemodel.h"
 
+bool NifData::compareStrings( const QChar * s, const char * t, size_t l )
+{
+	for ( size_t i = 0; i < l; i++ ) {
+		if ( s[i] != t[i] )
+			return false;
+	}
+	return true;
+}
+
 bool NifItem::isDescendantOf( const NifItem * testAncestor ) const
 {
 	if ( testAncestor ) {
@@ -86,13 +95,13 @@ void NifItem::registerChild( NifItem * item, int at )
 		at = nOldChildren;
 		childItems.append( item );
 		item->rowIdx = at;
-		updateLinkCache( at, false );
 	} else {
 		childItems.insert( at, item );
 		item->rowIdx = at;
 		updateChildRows( at + 1 );
-		updateLinkCache( at, true );
 	}
+	if ( item->isLink() || item->hasChildLinks() )
+		item->registerInParentLinkCache();
 }
 
 NifItem * NifItem::unregisterChild( int at )
@@ -101,7 +110,6 @@ NifItem * NifItem::unregisterChild( int at )
 		NifItem * item = childItems.at( at );
 		childItems.remove( at );
 		updateChildRows( at );
-		updateLinkCache( at, true );
 		return item;
 	}
 
@@ -111,68 +119,56 @@ NifItem * NifItem::unregisterChild( int at )
 void NifItem::registerInParentLinkCache()
 {
 	NifItem * c = this;
-	NifItem * p = parentItem;
-	while( p ) {
-		bool bOldHasChildLinks = p->hasChildLinks(); 
-		p->linkAncestorRows.append( c->row() );
+	for ( NifItem * p = parentItem; p; p = c->parentItem ) {
+		bool bOldHasChildLinks = p->hasChildLinks();
+		int	i = c->row();
+		p->linkRows.insert( i, i );
 		if ( bOldHasChildLinks )
 			break; // Do NOT register p in its parent (again) if c is NOT a first registered child link for p
 		c = p;
-		p = c->parentItem;
 	}
 }
 
 void NifItem::unregisterInParentLinkCache()
 {
 	NifItem * c = this;
-	NifItem * p = parentItem;
-	while( p ) {
-		int iRemove = p->linkAncestorRows.indexOf( c->row() );
-		if ( iRemove < 0 ) 
-			break; // c is not even registered in p...
-		p->linkAncestorRows.remove( iRemove );
-		if ( p->hasChildLinks() ) 
+	for ( NifItem * p = parentItem; p; p = c->parentItem ) {
+		p->linkRows.remove( c->row() );
+		if ( !p->linkRows.isEmpty() )
 			break; // Do NOT unregister p in its parent if p still has other registered child links
 		c = p;
-		p = c->parentItem;
 	}
 }
 
-static void cleanupChildIndexVector( QVector<ushort> & v, int iStartChild )
+void NifItem::updateChildRows( int iStartChild )
 {
-	for ( int i = v.count() - 1; i >= 0; i-- ) {
-		if ( v.at(i) >= iStartChild )
-			v.remove( i );
+	for ( int i = iStartChild; i < childItems.size(); i++ ) {
+		NifItem *	c = childItems.at( i );
+		if ( c )
+			c->rowIdx = i;
 	}
-}
-
-void NifItem::updateLinkCache( int iStartChild, bool bDoCleanup )
-{
-	bool bOldHasChildLinks = hasChildLinks();
-
-	// Clear outdated links
-	if ( bDoCleanup ) {
-		cleanupChildIndexVector( linkRows, iStartChild );
-		cleanupChildIndexVector( linkAncestorRows, iStartChild );
+	bool	hadChildLinks = hasChildLinks();
+	bool	needUpdateLinks = false;
+	for ( QMap<int, int>::iterator i = linkRows.end(); i != linkRows.begin(); ) {
+		i--;
+		if ( i.value() < iStartChild )
+			break;
+		i = linkRows.erase( i );
+		needUpdateLinks = true;
 	}
-
-	// Add new links
-	for ( int i = iStartChild; i < childItems.count(); i++ ) {
-		const NifItem * c = childItems.at( i );
-		if ( c->isLink() )
-			linkRows.append( i );
-		if ( c->hasChildLinks() )
-			linkAncestorRows.append( i );
+	if ( !needUpdateLinks )
+		return;
+	for ( int i = iStartChild; i < childItems.size(); i++ ) {
+		NifItem *	c = childItems.at( i );
+		if ( c && ( c->isLink() || c->hasChildLinks() ) )
+			linkRows.insert( i, i );
 	}
-
-	// Update parent link caches if needed
-	if ( hasChildLinks() ) {
-		if ( !bOldHasChildLinks )
-			registerInParentLinkCache();
-	} else { // not hasChildLinks
-		if ( bOldHasChildLinks )
-			unregisterInParentLinkCache();
-	}
+	if ( isLink() )
+		return;
+	if ( hasChildLinks() && !hadChildLinks )
+		registerInParentLinkCache();
+	else if ( hadChildLinks && !hasChildLinks() )
+		unregisterInParentLinkCache();
 }
 
 void NifItem::onParentItemChange()
