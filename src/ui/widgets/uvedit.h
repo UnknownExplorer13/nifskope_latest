@@ -183,6 +183,9 @@ private:
 
 	QVector<Vector2> texcoords;
 	QVector<face> faces;
+	QVector<Vector3> vertexPosBuf;
+	QVector<FloatVector4> vertexColorBuf;
+	QVector<quint16> indicesBuf;
 	QMultiMap<int, int> texcoords2faces;
 
 	QSize sHint;
@@ -190,10 +193,10 @@ private:
 	struct TextureInfo {
 		QString	name;
 		int	clampMode;	// 0 = wrap, 1 = clamp, 2 = mirror, 3 = border
-		int	isSRGB;
+		int	colorMode;	// 0 = linear, 1 = sRGB, 2 = BC5_UNORM, 3 = BC5_SNORM
 		FloatVector4	scaleAndOffset;
 		TextureInfo()
-			: clampMode( 0 ), isSRGB( 0 ), scaleAndOffset( 1.0f, 1.0f, 0.0f, 0.0f )
+			: clampMode( 0 ), colorMode( 0 ), scaleAndOffset( 1.0f, 1.0f, 0.0f, 0.0f )
 		{
 		}
 		TextureInfo( const NifModel * nif, const QString & texturePath );
@@ -209,7 +212,6 @@ private:
 
 	void drawTexCoords();
 
-	void setupViewport();
 	void updateViewRect( int width, int height );
 	bool bindTexture( const TextureInfo & t );
 	bool bindTexture( const QModelIndex & iSource );
@@ -252,14 +254,15 @@ private:
 	//! Action to trigger duplication of current coordinate set
 	QAction * aDuplicateCoords;
 
-	GLdouble glViewRect[4];
-
-	QPointF pos;
+	// scale and offset to map viewport coordinates (0.0,0.0 = top left, 1.0,1.0 = bottom right) to texture coordinates
+	FloatVector4 viewScaleAndOffset;
+	// texture coordinate offset, the texture is centered with pos = 0.0,0.0
+	double pos[2];
 
 	QPoint mousePos;
 	QHash<int, bool> kbd;
 
-	GLdouble zoom;
+	double zoom;
 
 	QUndoStack * undoStack;
 

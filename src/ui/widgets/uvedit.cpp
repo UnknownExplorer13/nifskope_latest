@@ -89,18 +89,7 @@ UVWidget * UVWidget::createEditor( NifModel * nif, const QModelIndex & idx )
 	return uvw;
 }
 
-static GLshort vertArray[4][2] = {
-	{ 0, 0 }, { 1, 0 },
-	{ 1, 1 }, { 0, 1 }
-};
-
-static GLshort texArray[4][2] = {
-	{ 0, 0 }, { 1, 0 },
-	{ 1, 1 }, { 0, 1 }
-};
-
 static GLdouble glUnit  = ( 1.0 / BASESIZE );
-static GLdouble glGridD = GRIDSIZE * glUnit;
 
 QStringList UVWidget::texnames = {
 	"Base Texture", "Dark Texture", "Detail Texture",
@@ -139,7 +128,8 @@ UVWidget::UVWidget( QWidget * parent )
 
 	zoom = 1.2;
 
-	pos = QPoint( 0, 0 );
+	pos[0] = 0.0;
+	pos[1] = 0.0;
 
 	mousePos = QPoint( -1000, -1000 );
 
@@ -225,35 +215,21 @@ void UVWidget::updateSettings()
 
 void UVWidget::initializeGL()
 {
-	glMatrixMode( GL_MODELVIEW );
-
 	cx = new NifSkopeOpenGLContext( context() );
 	textures->setOpenGLContext( cx );
+	cx->updateShaders( 1 );
 
-	glShadeModel( GL_SMOOTH );
-	//glShadeModel( GL_LINE_SMOOTH );
+	glEnable( GL_MULTISAMPLE );
 
-	glBlendFunc( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA );
 	glEnable( GL_BLEND );
+	cx->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 
 	glDepthFunc( GL_LEQUAL );
 	glEnable( GL_DEPTH_TEST );
-
-	glEnable( GL_MULTISAMPLE );
-	glDisable( GL_LIGHTING );
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_FRAMEBUFFER_SRGB );
 
 	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
-
-	if ( currentTexFile >= 0 && currentTexFile < texfiles.size() && !texfiles[currentTexFile].name.isEmpty() )
-		bindTexture( texfiles[currentTexFile] );
-	else
-		bindTexture( texsource );
-
-	glEnableClientState( GL_VERTEX_ARRAY );
-	glVertexPointer( 2, GL_SHORT, 0, vertArray );
-
-	glEnableClientState( GL_TEXTURE_COORD_ARRAY );
-	glTexCoordPointer( 2, GL_SHORT, 0, texArray );
 
 	// check for errors
 	GLenum err;
@@ -273,153 +249,97 @@ void UVWidget::resizeGL( int width, int height )
 
 void UVWidget::paintGL()
 {
-	glPushAttrib( GL_ALL_ATTRIB_BITS );
+	if ( !cx )
+		return;
+	cx->setCacheSize( 16777216 );
+	cx->shrinkCache();
+	cx->setViewport( 0, 0, pixelWidth, pixelHeight );
 
-	glMatrixMode( GL_PROJECTION );
-	glPushMatrix();
-	glLoadIdentity();
+	FloatVector4	bgColor = FloatVector4( Color4( cfg.background ) );
 
-	setupViewport();
+	glDepthMask( GL_TRUE );
 
-	glMatrixMode( GL_MODELVIEW );
-	glPushMatrix();
-	glLoadIdentity();
+	auto	prog = cx->useProgram( "uvedit.prog" );
+	if ( !( textures && prog && nif ) ) {
+		glClearColor( bgColor[0], bgColor[1], bgColor[2], bgColor[3] );
+		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+		return;
+	}
 
-	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
-	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	glClear( GL_DEPTH_BUFFER_BIT );
+
+	static const float	positions[8] = { 0.0f, 0.0f,  0.0f, 1.0f,  1.0f, 0.0f,  1.0f, 1.0f };
+	static const float *	attrData[8] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, positions };
+	cx->bindShape( 4, 0x20000000, 0, attrData, nullptr );
+
+	textures->activateTextureUnit( 0 );
+	FloatVector4	uvScaleAndOffset( 1.0f, 1.0f, 0.0f, 0.0f );
+	int	textureColorMode = -1;
+	if ( currentTexFile >= 0 && currentTexFile < texfiles.size() && !texfiles[currentTexFile].name.isEmpty() ) {
+		const TextureInfo &	t = texfiles.at( currentTexFile );
+		if ( bindTexture( t ) ) {
+			uvScaleAndOffset = t.scaleAndOffset;
+			textureColorMode = t.colorMode & 3;
+		}
+	} else if ( bindTexture( texsource ) ) {
+		textureColorMode = 0;
+	}
+	if ( textureColorMode < 0 ) {
+		static const QString	defaultTexture = "#FFFFFFFF";
+		textures->bind( defaultTexture, nif );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
+		textureColorMode = 0;
+	}
+
+	prog->uni4f( "viewScaleAndOffset", viewScaleAndOffset );
+
+	prog->uni1i( "BaseMap", 0 );
+	prog->uni1i( "textureColorMode", textureColorMode | ( aTextureBlend->isChecked() ? 0 : 4 ) );
+	prog->uni2f( "uvCenter", 0.0f, 0.0f );
+	prog->uni4f( "uvScaleAndOffset", uvScaleAndOffset );
+	prog->uni1f( "uvRotation", 0.0f );
+	float	pixelScaleX = float( pixelWidth ) / viewScaleAndOffset[0];
+	float	pixelScaleY = float( pixelHeight ) / viewScaleAndOffset[1];
+	prog->uni2f( "pixelScale", pixelScaleX, pixelScaleY );
+	FloatVector4	gridColors[3] = {
+		FloatVector4( 1.0f, 1.0f, 1.0f, 0.4f ),
+		FloatVector4( 1.0f, 1.0f, 1.0f, 0.2f ),
+		FloatVector4( 1.0f, 1.0f, 1.0f, 0.1f )
+	};
+	float	gridLineWidths[3] = {
+		GLView::Settings::lineWidthGrid,
+		GLView::Settings::lineWidthGrid * ( 6.0f / 7.0f ),
+		GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f )
+	};
+	for ( int i = 0; i < 3; i++ ) {
+		if ( gridLineWidths[i] < 1.0f ) {
+			gridColors[i][3] *= gridLineWidths[i];
+			gridLineWidths[i] = 1.0f;
+		}
+	}
+	prog->uni4fv( "gridColors", gridColors, 3 );
+	prog->uni3f( "gridLineWidths", gridLineWidths[0], gridLineWidths[1], gridLineWidths[2] );
+	bool	gridEnabled[3] = { true, ( zoom <= ( GRIDSEGS * GRIDSEGS / 2.0 ) ), ( zoom <= ( GRIDSEGS / 2.0 ) ) };
+	prog->uni1bv( "gridEnabled", gridEnabled, 3 );
+	prog->uni4f( "backgroundColor", bgColor );
+	prog->uni2f( "textureColorScale", 0.75f, 0.5f );
 
 	glDisable( GL_DEPTH_TEST );
 	glDepthMask( GL_FALSE );
-
-	// draw texture
-
-	glPushMatrix();
-	glLoadIdentity();
-
-	glEnable( GL_TEXTURE_2D );
-
-	if ( aTextureBlend->isChecked() )
-		glEnable( GL_BLEND );
-	else
-		glDisable( GL_BLEND );
-
-	FloatVector4	c0( 0.5f, 0.5f, 0.5f, 1.0f );
-	FloatVector4	c1( 0.75f, 0.75f, 0.75f, 1.0f );
-
-	if ( currentTexFile >= 0 && currentTexFile < texfiles.size() && !texfiles[currentTexFile].name.isEmpty() ) {
-		const TextureInfo &	t = texfiles.at( currentTexFile );
-		bindTexture( t );
-		if ( t.isSRGB ) {
-			glEnable( GL_FRAMEBUFFER_SRGB );
-			c0 *= c0;
-			c1 *= c1;
-		}
-	} else {
-		bindTexture( texsource );
-	}
-
-	glTranslatef( -0.5f, -0.5f, 0.0f );
-
-	glTranslatef( -1.0f, -1.0f, 0.0f );
-	glMatrixMode( GL_TEXTURE );
-	glTranslatef( -1.0f, -1.0f, 0.0f );
-	glMatrixMode( GL_MODELVIEW );
-
-	for ( int i = 0; i < 3; i++ ) {
-		for ( int j = 0; j < 3; j++ ) {
-			glColor4fv( ( i == 1 && j == 1 ) ? &( c1[0] ) : &( c0[0] ) );
-
-			glDrawArrays( GL_QUADS, 0, 4 );
-
-			glTranslatef( 1.0f, 0.0f, 0.0f );
-			glMatrixMode( GL_TEXTURE );
-			glTranslatef( 1.0f, 0.0f, 0.0f );
-			glMatrixMode( GL_MODELVIEW );
-		}
-
-		glTranslatef( -3.0f, 1.0f, 0.0f );
-		glMatrixMode( GL_TEXTURE );
-		glTranslatef( -3.0f, 1.0f, 0.0f );
-		glMatrixMode( GL_MODELVIEW );
-	}
-
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_BLEND );
 	glDisable( GL_FRAMEBUFFER_SRGB );
 
-	glTranslatef( 1.0f, -2.0f, 0.0f );
-	glMatrixMode( GL_TEXTURE );
-	glTranslatef( 1.0f, -2.0f, 0.0f );
-	glMatrixMode( GL_MODELVIEW );
-
-	glDisable( GL_TEXTURE_2D );
-
-	glPopMatrix();
-
-	// draw grid
-	glPushMatrix();
-	glLoadIdentity();
-
-	glEnable( GL_BLEND );
-
-	glLineWidth( GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f ) );
-	glBegin( GL_LINES );
-	int glGridMinX = qRound( qMin( glViewRect[0], glViewRect[1] ) / glGridD );
-	int glGridMaxX = qRound( qMax( glViewRect[0], glViewRect[1] ) / glGridD );
-	int glGridMinY = qRound( qMin( glViewRect[2], glViewRect[3] ) / glGridD );
-	int glGridMaxY = qRound( qMax( glViewRect[2], glViewRect[3] ) / glGridD );
-
-	for ( int i = glGridMinX; i < glGridMaxX; i++ ) {
-		GLdouble glGridPos = glGridD * i;
-
-		if ( ( i % ( GRIDSEGS * GRIDSEGS ) ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid );
-			glColor4f( 1.0f, 1.0f, 1.0f, 0.4f );
-		} else if ( zoom > ( GRIDSEGS * GRIDSEGS / 2.0 ) ) {
-			continue;
-		} else if ( ( i % GRIDSEGS ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid * ( 6.0f / 7.0f ) );
-			glColor4f( 1.0f, 1.0f, 1.0f, 0.2f );
-		} else if ( zoom > ( GRIDSEGS / 2.0 ) ) {
-			continue;
-		} else {
-			glLineWidth( GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f ) );
-			glColor4f( 1.0f, 1.0f, 1.0f, 0.1f );
-		}
-
-		glVertex2d( glGridPos, glViewRect[2] );
-		glVertex2d( glGridPos, glViewRect[3] );
-	}
-
-	for ( int i = glGridMinY; i < glGridMaxY; i++ ) {
-		GLdouble glGridPos = glGridD * i;
-
-		if ( ( i % ( GRIDSEGS * GRIDSEGS ) ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid );
-			glColor4f( 1.0f, 1.0f, 1.0f, 0.4f );
-		} else if ( zoom > ( GRIDSEGS * GRIDSEGS / 2.0 ) ) {
-			continue;
-		} else if ( ( i % GRIDSEGS ) == 0 ) {
-			glLineWidth( GLView::Settings::lineWidthGrid * ( 6.0f / 7.0f ) );
-			glColor4f( 1.0f, 1.0f, 1.0f, 0.2f );
-		} else if ( zoom > ( GRIDSEGS / 2.0 ) ) {
-			continue;
-		} else {
-			glLineWidth( GLView::Settings::lineWidthGrid * ( 4.0f / 7.0f ) );
-			glColor4f( 1.0f, 1.0f, 1.0f, 0.1f );
-		}
-
-		glVertex2d( glViewRect[0], glGridPos );
-		glVertex2d( glViewRect[1], glGridPos );
-	}
-
-	glEnd();
-
-	glPopMatrix();
+	// draw texture and grid
+	cx->fn->glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
 
 	drawTexCoords();
 
-	glDisable( GL_DEPTH_TEST );
-	glDepthMask( GL_FALSE );
-
+	// TODO
+#if 0
 	if ( !selectRect.isNull() ) {
 		glLoadIdentity();
 		glColor( Color4( cfg.highlight ) );
@@ -440,119 +360,146 @@ void UVWidget::paintGL()
 		}
 		glEnd();
 	}
-
-	glMatrixMode( GL_MODELVIEW );
-	glPopMatrix();
-
-	glMatrixMode( GL_PROJECTION );
-	glPopMatrix();
-
-	glPopAttrib();
+#endif
 }
 
 void UVWidget::drawTexCoords()
 {
-	glMatrixMode( GL_MODELVIEW );
+	qsizetype	numVerts = texcoords.size();
+	qsizetype	numTriangles = faces.size();
+	if ( !cx || numVerts < 1 || numTriangles < 1 )
+		return;
 
-	glPushMatrix();
-	glLoadIdentity();
+	vertexPosBuf.resize( numVerts );
+	vertexColorBuf.resize( numVerts );
+	indicesBuf.resize( numTriangles * 3 );
 
-	glScalef( 1.0f, 1.0f, 1.0f );
-	glTranslatef( -0.5f, -0.5f, 0.0f );
+	Vector3 *	vertexPosData = vertexPosBuf.data();
+	FloatVector4 *	vertexColorData = vertexColorBuf.data();
+	quint16 *	indicesData = indicesBuf.data();
 
-	Color4 nlColor( cfg.wireframe );
-	nlColor.setAlpha( 0.5f );
-	Color4 hlColor( cfg.highlight );
-	hlColor.setAlpha( 0.5f );
+	FloatVector4	nlColor = FloatVector4( Color4(cfg.wireframe) ).blendValues( FloatVector4( 0.5f ), 0x08 );
+	FloatVector4	hlColor = FloatVector4( Color4(cfg.highlight) ).blendValues( FloatVector4( 0.5f ), 0x08 );
 
-	glLineWidth( GLView::Settings::lineWidthWireframe * 0.625f );
-	glPointSize( GLView::Settings::vertexPointSize * 0.75f );
+	// load geometry data
+	for ( qsizetype i = 0; i < numVerts; i++ ) {
+		Vector2	v( texcoords.at( i ) );
+		float	z = 0.0f;
+		if ( selection.contains( int( i ) ) ) {
+			vertexColorData[i] = hlColor;
+			z = 1.0f;
+		} else {
+			vertexColorData[i] = nlColor;
+		}
+		vertexPosData[i] = Vector3( v[0], v[1], z );
+	}
+
+	for ( qsizetype i = 0; i < numTriangles; i++ ) {
+		const auto &	f = faces.at( i );
+		unsigned int	v0 = (unsigned int) f.tc[0];
+		unsigned int	v1 = (unsigned int) f.tc[1];
+		unsigned int	v2 = (unsigned int) f.tc[2];
+		// remove invalid indices
+		unsigned int	d = std::min( v0, std::min( v1, v2 ) );
+		if ( d >= (unsigned int) numVerts )
+			d = 0;
+		indicesData[i * 3] = quint16( v0 < (unsigned int) numVerts ? v0 : d );
+		indicesData[i * 3 + 1] = quint16( v1 < (unsigned int) numVerts ? v1 : d );
+		indicesData[i * 3 + 2] = quint16( v2 < (unsigned int) numVerts ? v2 : d );
+	}
+
+	const float *	attrData[2] = { &( vertexPosData[0][0] ), &( vertexColorData[0][0] ) };
+	cx->bindShape( (unsigned int) numVerts, 0x43, size_t( numTriangles ) * 6, attrData, indicesData );
 
 	glEnable( GL_BLEND );
-	glEnable( GL_DEPTH_TEST );
-	glDepthFunc( GL_LEQUAL );
-	glDepthMask( GL_TRUE );
+	cx->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 
-	float z;
+	glDepthFunc( GL_LEQUAL );
+	glEnable( GL_DEPTH_TEST );
+	glDepthMask( GL_TRUE );
+	glDisable( GL_CULL_FACE );
+	glDisable( GL_FRAMEBUFFER_SRGB );
 
 	// draw triangle edges
-	for ( int i = 0; i < faces.size(); i++ ) {
-		glBegin( GL_LINE_LOOP );
+	if ( auto prog = cx->useProgram( "wireframe.prog" ); prog ) {
+		prog->uni4f( "vertexColorOverride", FloatVector4( 0.0f ) );
+		prog->uni1i( "selectionParam", -1 );
+		prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe * 0.625f );
 
-		for ( int j = 0; j < 3; j++ ) {
-			int x = faces[i].tc[j];
-
-			if ( selection.contains( x ) ) {
-				glColor( Color3( hlColor ) );
-				z = 1.0f;
-			} else {
-				glColor( Color3( nlColor ) );
-				z = 0.0f;
-			}
-
-			glVertex( Vector3( texcoords[x], z ) );
-		}
-
-		glEnd();
+		cx->fn->glDrawElements( GL_TRIANGLES, GLsizei( numTriangles * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 	}
 
 	// draw points
+	if ( auto prog = cx->useProgram( "selection.prog" ); prog ) {
+		prog->uni4f( "vertexColorOverride", FloatVector4( 0.0f ) );
+		float	pointSize = GLView::Settings::vertexPointSize * 0.75f + 0.5f;
+		prog->uni1i( "selectionFlags", ( roundFloat( std::min( pointSize * 8.0f, 255.0f ) ) << 8 ) | 0x0002 );
+		prog->uni1i( "selectionParam", -1 );
+		glPointSize( pointSize );
 
-	glBegin( GL_POINTS );
-
-	for ( int i = 0; i < texcoords.size(); i++ ) {
-		if ( selection.contains( i ) ) {
-			glColor( Color3( hlColor ) );
-			z = 1.0f;
-		} else {
-			glColor( Color3( nlColor ) );
-			z = 0.0f;
-		}
-
-		glVertex( Vector3( texcoords[i], z ) );
+		cx->fn->glDrawArrays( GL_POINTS, 0, GLsizei( numVerts ) );
 	}
-
-	glEnd();
-
-	glPopMatrix();
-}
-
-void UVWidget::setupViewport()
-{
-	glMatrixMode( GL_PROJECTION );
-	glLoadIdentity();
-
-	glViewport( 0, 0, pixelWidth, pixelHeight );
-
-	glOrtho( glViewRect[0], glViewRect[1], glViewRect[2], glViewRect[3], -10.0, +10.0 );
 }
 
 void UVWidget::updateViewRect( int width, int height )
 {
-	GLdouble glOffX = glUnit * zoom * 0.5 * width;
-	GLdouble glOffY = glUnit * zoom * 0.5 * height;
-	GLdouble glPosX = glUnit * pos.x();
-	GLdouble glPosY = glUnit * pos.y();
+	double	scaleX, scaleY;
+	if ( width < height ) {
+		scaleX = zoom;
+		scaleY = zoom * double( height ) / double( width );
+	} else {
+		scaleX = zoom * double( width ) / double( height );
+		scaleY = zoom;
+	}
+	double	offsX = pos[0] + 0.5 - scaleX * 0.5;
+	double	offsY = pos[1] + 0.5 - scaleY * 0.5;
+	viewScaleAndOffset = FloatVector4( float( scaleX ), float( scaleY ), float( offsX ), float( offsY ) );
 
-	glViewRect[0] = -glOffX - glPosX;
-	glViewRect[1] = +glOffX - glPosX;
-	glViewRect[2] = +glOffY + glPosY;
-	glViewRect[3] = -glOffY + glPosY;
+	cx->projectionMatrix = Matrix4();
+	cx->setGlobalUniforms();
+
+	Matrix4	modelViewMatrix;
+	double	invScaleX = 2.0 / scaleX;
+	double	invScaleY = 2.0 / scaleY;
+	modelViewMatrix( 0, 0 ) = float( invScaleX );
+	modelViewMatrix( 1, 1 ) = float( -invScaleY );
+	modelViewMatrix( 2, 2 ) = -0.25f;
+	modelViewMatrix( 3, 0 ) = float( ( pos[0] + 0.5 ) * -invScaleX );
+	modelViewMatrix( 3, 1 ) = float( ( pos[1] + 0.5 ) * invScaleY );
+	modelViewMatrix( 3, 2 ) = 0.375f;
+
+	if ( auto prog = cx->useProgram( "lines.prog" ); prog ) {
+		prog->uni4m( "modelViewMatrix", modelViewMatrix );
+	}
+	if ( auto prog = cx->useProgram( "selection.prog" ); prog ) {
+		prog->uni4m( "modelViewMatrix", modelViewMatrix );
+		prog->uni1i( "numBones", 0 );
+	}
+	if ( auto prog = cx->useProgram( "wireframe.prog" ); prog ) {
+		prog->uni3m( "normalMatrix", Matrix() );
+		prog->uni4m( "modelViewMatrix", modelViewMatrix );
+		prog->uni1i( "numBones", 0 );
+	}
 }
 
 QPoint UVWidget::mapFromContents( const Vector2 & v ) const
 {
-	float x = ( ( v[0] - 0.5 ) - glViewRect[ 0 ] ) / ( glViewRect[ 1 ] - glViewRect[ 0 ] ) * pixelWidth;
-	float y = ( ( v[1] - 0.5 ) - glViewRect[ 3 ] ) / ( glViewRect[ 2 ] - glViewRect[ 3 ] ) * pixelHeight;
+	double	x = ( double( v[0] ) - double( viewScaleAndOffset[2] ) ) / double( viewScaleAndOffset[0] );
+	double	y = ( double( v[1] ) - double( viewScaleAndOffset[3] ) ) / double( viewScaleAndOffset[1] );
+	x *= double( pixelWidth );
+	y *= double( pixelHeight );
 
 	return QPointF( x, y ).toPoint();
 }
 
 Vector2 UVWidget::mapToContents( const QPoint & p ) const
 {
-	float x = ( float(p.x()) / float(pixelWidth) ) * ( glViewRect[ 1 ] - glViewRect[ 0 ] ) + glViewRect[ 0 ];
-	float y = ( float(p.y()) / float(pixelHeight) ) * ( glViewRect[ 2 ] - glViewRect[ 3 ] ) + glViewRect[ 3 ];
-	return Vector2( x, y );
+	double	x = double( p.x() ) / double( pixelWidth );
+	double	y = double( p.y() ) / double( pixelHeight );
+	x = x * double( viewScaleAndOffset[0] ) + double( viewScaleAndOffset[2] );
+	y = y * double( viewScaleAndOffset[1] ) + double( viewScaleAndOffset[3] );
+
+	return Vector2( float( x ), float( y ) );
 }
 
 QVector<int> UVWidget::indices( const QPoint & p ) const
@@ -592,17 +539,9 @@ bool UVWidget::bindTexture( const TextureInfo & t )
 			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT );
 			glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT );
 		}
-		glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
 
 		// TODO: Add support for non-square textures
 
-		glMatrixMode( GL_TEXTURE );
-		glLoadIdentity();
-
-		glTranslatef( t.scaleAndOffset[2], t.scaleAndOffset[3], 0.0f );
-		glScalef( t.scaleAndOffset[0], t.scaleAndOffset[1], 1.0f );
-
-		glMatrixMode( GL_MODELVIEW );
 		return true;
 	}
 
@@ -617,14 +556,11 @@ bool UVWidget::bindTexture( const QModelIndex & iSource )
 	if ( mipmaps ) {
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, mipmaps > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
-		glTexEnvi( GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT );
+		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT );
 
 		// TODO: Add support for non-square textures
 
-		glMatrixMode( GL_TEXTURE );
-		glLoadIdentity();
-
-		glMatrixMode( GL_MODELVIEW );
 		return true;
 	}
 
@@ -734,7 +670,8 @@ void UVWidget::mouseMoveEvent( QMouseEvent * e )
 		break;
 
 	case Qt::MiddleButton:
-		pos += zoom * QPointF( dPos.x(), -dPos.y() );
+		pos[0] -= dPos.x() * double( viewScaleAndOffset[0] ) / double( pixelWidth );
+		pos[1] -= dPos.y() * double( viewScaleAndOffset[1] ) / double( pixelHeight );
 		updateViewRect( pixelWidth, pixelHeight );
 
 		setCursor( QCursor( Qt::ClosedHandCursor ) );
@@ -845,7 +782,7 @@ void UVWidget::keyReleaseEvent( QKeyEvent * e )
 UVWidget::TextureInfo::TextureInfo( const NifModel * nif, const QString & texturePath )
 {
 	clampMode = 0;	// Wrap
-	isSRGB = 0;
+	colorMode = 0;
 	scaleAndOffset = FloatVector4( 1.0f, 1.0f, 0.0f, 0.0f );
 	name = TexCache::find( texturePath, nif );
 }
@@ -856,7 +793,7 @@ UVWidget::TextureInfo::TextureInfo( const NifModel * nif, const std::string_view
 		uvStream = &CE2Material::defaultUVStream;
 	name = TexCache::find( QString::fromLatin1( texturePath->data(), qsizetype( texturePath->length() ) ), nif );
 	clampMode = reinterpret_cast< const CE2Material::UVStream * >( uvStream )->textureAddressMode & 3;
-	isSRGB = 0;
+	colorMode = 0;
 	scaleAndOffset = reinterpret_cast< const CE2Material::UVStream * >( uvStream )->scaleAndOffset;
 }
 
@@ -883,7 +820,9 @@ void UVWidget::setTexturePaths( NifModel * nif, QModelIndex iTexProp )
 					continue;
 				t.clampMode = int( ( nif->get<quint16>( iTexPropData, "Shader Flags 1" ) & 3 ) == 0 );
 				if ( texSlot == 0 || texSlot == 5 || texSlot == 6 )
-					t.isSRGB = 1;
+					t.colorMode = 1;
+				else if ( texSlot == 1 )
+					t.colorMode = 3;
 				Vector2	uvOffset = nif->get<Vector2>( iTexPropData, "UV Offset" );
 				Vector2	uvScale = nif->get<Vector2>( iTexPropData, "UV Scale" );
 				t.scaleAndOffset = FloatVector4( uvScale[0], uvScale[1], uvOffset[0], uvOffset[1] );
@@ -912,7 +851,9 @@ void UVWidget::setTexturePaths( NifModel * nif, QModelIndex iTexProp )
 						uvStream = matData->alphaUVStream;
 					TextureInfo	t( nif, txtSet->texturePaths[j], uvStream );
 					if ( j == 0 || j == 7 || j == 14 )
-						t.isSRGB = 1;
+						t.colorMode = 1;
+					else if ( j == 1 )
+						t.colorMode = 3;
 					if ( !t.name.isEmpty() )
 						texfiles.append( t );
 				}
@@ -960,7 +901,9 @@ void UVWidget::setTexturePaths( NifModel * nif, QModelIndex iTexProp )
 					continue;
 				t.clampMode = clampMode;
 				if ( ( texSlot == 0 || texSlot == 9 ) && nif->getBSVersion() >= 151 )
-					t.isSRGB = 1;
+					t.colorMode = 1;
+				else if ( texSlot == 1 && nif->getBSVersion() >= 130 )
+					t.colorMode = ( nif->getBSVersion() < 151 ? 2 : 3 );
 				t.scaleAndOffset = FloatVector4( uvScale[0], uvScale[1], uvOffset[0], uvOffset[1] );
 				texfiles.append( t );
 			}
@@ -975,7 +918,9 @@ void UVWidget::setTexturePaths( NifModel * nif, QModelIndex iTexProp )
 				continue;
 			t.clampMode = clampMode;
 			if ( texSlot == 0 && nif->getBSVersion() >= 151 )
-				t.isSRGB = 1;
+				t.colorMode = 1;
+			else if ( nif->getBSVersion() >= 130 )
+				t.colorMode = ( nif->getBSVersion() < 151 ? 2 : 3 );
 			t.scaleAndOffset = FloatVector4( uvScale[0], uvScale[1], uvOffset[0], uvOffset[1] );
 			texfiles.append( t );
 		}
