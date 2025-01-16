@@ -109,7 +109,7 @@ void main()
 
 	// Convert model space to view space
 	//	Swizzled G/B values!
-	normal = normalize( viewMatrix * normal.rbg );
+	normal = normalize( normal.rbg * viewMatrix );
 
 	// Face Normals
 	//vec3 X = dFdx(v);
