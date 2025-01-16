@@ -545,7 +545,7 @@ void NifModel::updateHeader()
 			int nMaxLen = 0;
 			auto headerStrings = getItem( header, "Strings" );
 			if ( headerStrings ) {
-				for ( auto c : headerStrings->childIter() ) {
+				for ( auto c : headerStrings->children() ) {
 					int len = c->get<QString>().length();
 					if ( len > nMaxLen )
 						nMaxLen = len;
@@ -735,7 +735,7 @@ bool NifModel::updateChildArraySizes( NifItem * parent )
 	if ( !parent )
 		return false;
 
-	for ( auto child : parent->childIter() ) {
+	for ( auto child : parent->children() ) {
 		if ( evalCondition( child ) ) {
 			if ( child->isArray() ) {
 				if ( !updateArraySize(child) )
@@ -869,9 +869,8 @@ void NifModel::updateStrings( NifModel * src, NifModel * tgt, NifItem * item )
 		}
 	}
 
-	for ( auto child : item->children() ) {
+	for ( auto child : item->children() )
 		updateStrings( src, tgt, child );
-	}
 }
 
 QMap<qint32, qint32> NifModel::moveAllNiBlocks( NifModel * targetnif, bool update )
@@ -2313,7 +2312,7 @@ int NifModel::blockSize( const NifItem * item, NifSStream & stream ) const
 	QString name;
 
 	int size = 0;
-	for ( auto child : item->childIter() ) {
+	for ( auto child : item->children() ) {
 		if ( child->isAbstract() ) {
 			//qDebug() << "Not counting abstract item " << child->name();
 			continue;
@@ -2350,7 +2349,7 @@ bool NifModel::loadItem( NifItem * parent, NifIStream & stream )
 
 	QString name;
 
-	for ( auto child : parent->childIter() ) {
+	for ( auto child : parent->children() ) {
 		child->invalidateCondition();
 
 		if ( child->isAbstract() ) {
@@ -2396,12 +2395,12 @@ bool NifModel::loadHeader( NifItem * header, NifIStream & stream )
 	// assuming that there could be muliple children with those names (who knows what will happen to nif.xml).
 	bool bFoundUserVersion = false;
 	bool bFoundBSVersion = false;
-	for ( auto child : header->childIter() ) {
+	for ( auto child : header->children() ) {
 		if ( child->hasName("User Version") ) {
 			child->set<int>( 0 );
 			bFoundUserVersion = true;
 		} else if ( child->hasName("BS Header") ) {
-			for ( auto subChild : child->childIter() ) {
+			for ( auto subChild : child->children() ) {
 				if ( subChild->hasName("BS Version") ) {
 					subChild->set<int>( 0 );
 					bFoundBSVersion = true;
@@ -2428,7 +2427,7 @@ bool NifModel::saveItem( const NifItem * parent, NifOStream & stream ) const
 
 	QString name;
 
-	for ( auto child : parent->childIter() ) {
+	for ( auto child : parent->children() ) {
 		if ( child->isAbstract() ) {
 			// qDebug() << "Not saving abstract item " << child->name();
 			continue;
@@ -2466,7 +2465,7 @@ bool NifModel::fileOffset( const NifItem * parent, const NifItem * target, NifSS
 	if ( parent == target )
 		return true;
 
-	for ( auto child : parent->childIter() ) {
+	for ( auto child : parent->children() ) {
 		if ( child == target )
 			return true;
 
@@ -2657,8 +2656,7 @@ void NifModel::updateLinks( int block, NifItem * parent )
 	if ( !parent )
 		return;
 
-	const auto & links = parent->getLinkRows();
-	for ( int l : links ) {
+	for ( int l : parent->getLinkRows() ) {
 		NifItem * c = parent->child( l );
 		if ( !c )
 			continue;
@@ -2749,7 +2747,7 @@ QVector<qint32> NifModel::getLinkArray( const NifItem * arrayRootItem ) const
 		int nLinks = arrayRootItem->childCount();
 		if ( nLinks > 0 ) {
 			links.reserve( nLinks );
-			for ( auto child : arrayRootItem->childIter() )
+			for ( auto child : arrayRootItem->children() )
 				links.append( child->getLinkValue() );
 		}
 	} else {

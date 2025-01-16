@@ -35,6 +35,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "data/nifvalue.h"
 #include "xml/nifexpr.h"
+#include <span>
 
 #include <QSharedData> // Inherited
 #include <QPointer>
@@ -301,7 +302,12 @@ public:
 
 	~NifItem()
 	{
-		qDeleteAll( childItems );
+		if ( childItems ) {
+			deleteChildItems();
+			std::free( childItems );
+		}
+		if ( linkRows )
+			delete[] ( linkRows - 1 );
 	}
 
 	//! Return the parent model.
@@ -319,8 +325,8 @@ public:
 	//! Return the row that this item is at.
 	int row() const
 	{
-		if ( rowIdx < 0 )
-			rowIdx = parentItem ? parentItem->childItems.indexOf( const_cast<NifItem *>(this) ) : 0;
+		if ( rowIdx < 0 ) [[unlikely]]
+			return updateRowIndex();
 
 		return rowIdx;
 	}
@@ -331,47 +337,22 @@ public:
 	 */
 	void prepareInsert( int e )
 	{
-		childItems.reserve( childItems.count() + e );
+		if ( childItemsCapacity < ( childItemsSize + e ) )
+			reserveChildItems( childItemsSize + e );
 	}
 
-	template<typename T> struct _ChildIterator
+	//! Get a span of child items.
+	std::span< NifItem * > children()
 	{
-		using iterator_category = std::forward_iterator_tag;
-		using difference_type   = std::ptrdiff_t;
-
-		_ChildIterator(NifItem * const * ptr) : m_ptr( const_cast<T*>( ptr ) ) {}
-
-		T & operator *() const { return *m_ptr; }
-        T * operator ->() { return m_ptr; }
-		_ChildIterator & operator++() { m_ptr++; return *this; }
-		_ChildIterator operator++( int ) { _ChildIterator tmp = *this; ++(*this); return tmp; }
-        friend bool operator==( const _ChildIterator & a, const _ChildIterator & b ) { return a.m_ptr == b.m_ptr; };
-        friend bool operator!=( const _ChildIterator & a, const _ChildIterator & b ) { return a.m_ptr != b.m_ptr; };
-
-    private:
-		T * m_ptr;
-    };
-
-	template<typename T> struct ChildIterator
+		return std::span< NifItem * >( childItems, size_t( childItemsSize ) );
+	}
+	std::span< const NifItem * const > children() const
 	{
-		ChildIterator( const QVector<NifItem *> & children ) : m_children( children ) {}
-
-		_ChildIterator<T> begin() { return _ChildIterator<T>(&(*(m_children.begin()))); }
-		_ChildIterator<T> end() { return _ChildIterator<T>(&(*(m_children.end()))); }
-
-	private:
-		const QVector<NifItem*> & m_children;
-	};
-
-	const QVector<NifItem *> & childIter() { return childItems; }
-
-	ChildIterator<const NifItem *> childIter() const { return ChildIterator<const NifItem *>(childItems); }
-
-	//! Get QVector of child items.
-	const QVector<NifItem *> & children() { return childItems; }
+		return std::span< const NifItem * const >( childItems, size_t( childItemsSize ) );
+	}
 
 	//! Return the number of child items.
-	int childCount() const { return childItems.count(); }
+	int childCount() const { return childItemsSize; }
 
 	//! Checks if the item is testAncestor itself or its child or a child of a child, etc.
 	bool isDescendantOf( const NifItem * testAncestor ) const;
@@ -475,40 +456,37 @@ public:
 	 * @param row	The row to start from
 	 * @param count The number of rows to delete
 	 */
-	void removeChildren( int row, int count )
+	void removeChildren( int row, int count );
+
+	//! Return the child item at the specified row
+	NifItem * child( int row )
 	{
-		int iStart = std::max( row, 0 );
-		int iEnd = std::min( row + count, int( childItems.count() ) );
-		if ( iStart < iEnd ) {
-			for ( int i = iStart; i < iEnd; i++ ) {
-				NifItem * item = childItems.at( i );
-				if ( item )
-					delete item;
-			}
-			childItems.remove( iStart, iEnd - iStart );
-			updateChildRows( iStart );
-		}
+		if ( (unsigned int) row >= (unsigned int) childItemsSize ) [[unlikely]]
+			return nullptr;
+		return childItems[row];
 	}
 
 	//! Return the child item at the specified row
-	NifItem * child( int row ) { return childItems.value( row ); }
-
-	//! Return the child item at the specified row
-	const NifItem * child( int row ) const { return childItems.value( row ); }
+	const NifItem * child( int row ) const
+	{
+		if ( (unsigned int) row >= (unsigned int) childItemsSize ) [[unlikely]]
+			return nullptr;
+		return childItems[row];
+	}
 
 	//! Remove all child items
 	void killChildren()
 	{
-		qDeleteAll( childItems );
-		childItems.clear();
+		if ( childItemsSize > 0 )
+			deleteChildItems();
 
 		if ( hasChildLinks() ) {
-			linkRows.clear();
+			linkRowsSize = 0;
 			unregisterInParentLinkCache();
 		}
 	}
 
-	const QMap<int, int> & getLinkRows() const { return linkRows; }
+	std::span< const int > getLinkRows() const { return std::span< const int >( linkRows, linkRowsSize ); }
 
 	//! Cached result of cond expression
 	bool condition() const { return conditionStatus == 1; }
@@ -534,7 +512,7 @@ public:
 		if ( isConditionCached() ) {
 			conditionStatus = -1;
 
-			for ( NifItem * c : childItems )
+			for ( auto c : children() )
 				c->invalidateCondition();
 		}
 	}
@@ -545,7 +523,7 @@ public:
 		if ( isVersionConditionCached() ) {
 			vercondStatus = -1;
 
-			for ( NifItem * c : childItems )
+			for ( auto c : children() )
 				c->invalidateVersionCondition();
 		}
 	}
@@ -554,15 +532,22 @@ private:
 	//! Invalidate the cached at index
 	void invalidateRow() { rowIdx = -1; }
 
+	size_t findLinkRow( int n ) const;
+	void insertLinkRow( int n );
 	void registerInParentLinkCache();
 	void unregisterInParentLinkCache();
+	void removeLinkRow( int n );
 	void updateChildRows( int iStartChild = 0 );
+	void updateLinkRows( int iStartChild = 0 );
+	int updateRowIndex() const;
+	void reserveChildItems( int n );
+	void deleteChildItems();
 
 	void onParentItemChange();
 
 public:
 	//! Does the item have any children of link type?
-	bool hasChildLinks() const { return !linkRows.isEmpty(); }
+	bool hasChildLinks() const { return bool( linkRowsSize ); }
 
 	//! Return the value of the item data (const version)
 	inline const NifValue & value() const { return itemData; }
@@ -733,10 +718,10 @@ public:
 	template <typename T> QVector<T> getArray() const
 	{
 		QVector<T> array;
-		int nSize = childItems.count();
+		qsizetype nSize = childItemsSize;
 		if ( nSize > 0 ) {
 			array.reserve( nSize );
-			for ( const NifItem * child : childItems )
+			for ( auto child : children() )
 				array.append( child->get<T>() );
 		}
 		return array;
@@ -755,16 +740,16 @@ public:
 	//! Set the child items' values from an array.
 	template <typename T> bool setArray( const QVector<T> & array )
 	{
-		int nSize = childItems.count();
-		if ( nSize != array.count() ) {
+		qsizetype nSize = childItemsSize;
+		if ( array.size() != nSize ) {
 			reportError(
 				__func__,
-				QString( "The input QVector's size (%1) does not match the array's size (%2)." ).arg( array.count() ).arg( nSize )
+				QString( "The input QVector's size (%1) does not match the array's size (%2)." ).arg( array.size() ).arg( nSize )
 			);
 			return false;
 		}
-		for ( int i = 0; i < nSize; i++ ) {
-			if ( !childItems.at(i)->set<T>( array.at(i) ) )
+		for ( qsizetype i = 0; i < nSize; i++ ) {
+			if ( !childItems[i]->set<T>( array.at( i ) ) )
 				return false;
 		}
 
@@ -774,7 +759,7 @@ public:
 	//! Set the child items' values from a single value.
 	template <typename T> bool fillArray( const T & val )
 	{
-		for ( NifItem * child : childItems ) {
+		for ( auto child : children() ) {
 			if ( !child->set<T>( val ) )
 				return false;
 		}
@@ -812,10 +797,9 @@ private:
 	//! The parent of this item
 	NifItem * parentItem = nullptr;
 	//! The child items
-	QVector<NifItem *> childItems;
-
-	//! Rows which are links or have links under them at any level
-	QMap<int, int> linkRows;
+	NifItem ** childItems = nullptr;
+	int childItemsSize = 0;
+	int childItemsCapacity = 0;
 
 	//! Item's row index, -1 is not cached, otherwise 0+
 	mutable int rowIdx = -1;
@@ -823,6 +807,10 @@ private:
 	mutable signed char conditionStatus = -1;
 	//! Item's vercond status, -1 is not cached, otherwise 0/1
 	mutable signed char vercondStatus = -1;
+
+	//! Rows which are links or have links under them at any level
+	unsigned short linkRowsSize = 0;
+	int * linkRows = nullptr;	// linkRows[-1] is the capacity of the array
 };
 
 #endif

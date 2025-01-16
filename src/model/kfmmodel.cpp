@@ -287,7 +287,7 @@ bool KfmModel::load( NifItem * parent, NifIStream & stream )
 	if ( !parent )
 		return false;
 
-	for ( NifItem * child: parent->childIter() ) {
+	for ( auto child : parent->children() ) {
 		child->invalidateCondition();
 
 		if ( evalCondition( child ) ) {
