@@ -555,7 +555,7 @@ void Node::drawSelection() const
 	scene->loadModelViewMatrix( viewTrans() );
 
 	float sceneRadius = scene->bounds().radius;
-	float normalScale = (sceneRadius > 150.0) ? 1.0 : sceneRadius / 150.0;
+	float normalScale = std::min( sceneRadius / 9.375f, ( nif->getBSVersion() < 170 ? 16.0f : 0.25f ) );
 
 	if ( currentBlock == "BSConnectPoint::Parents" ) {
 		auto cp = nif->getIndex( scene->currentBlock, "Connect Points" );
@@ -581,7 +581,7 @@ void Node::drawSelection() const
 			m.fromQuat( rot );
 			t.rotation = m;
 			t.translation = trans;
-			t.scale = normalScale * 16;
+			t.scale = normalScale;
 
 			scene->pushAndMultModelViewMatrix( t );
 
@@ -605,6 +605,7 @@ void Node::drawSelection() const
 	if ( currentBlock.endsWith( "Node" ) && scene->hasOption(Scene::ShowNodes) && scene->hasOption(Scene::ShowAxes) ) {
 		Transform t;
 		t.rotation = nif->get<Matrix>( scene->currentIndex, "Rotation" );
+		t.scale = normalScale;
 
 		scene->pushAndMultModelViewMatrix( t );
 
