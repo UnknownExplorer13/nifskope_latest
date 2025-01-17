@@ -104,6 +104,10 @@ UVWidget::UVWidget( QWidget * parent )
 {
 	cx = nullptr;
 	{
+		QSettings settings;
+		int	aa = settings.value( "Settings/Render/General/Msaa Samples", 2 ).toInt();
+		aa = std::min< int >( std::max< int >( aa, 0 ), 4 );
+
 		QSurfaceFormat	fmt = format();
 		// OpenGL version (4.1 or 4.2, core profile)
 		fmt.setRenderableType( QSurfaceFormat::OpenGL );
@@ -115,8 +119,16 @@ UVWidget::UVWidget( QWidget * parent )
 #endif
 		fmt.setProfile( QSurfaceFormat::CoreProfile );
 		fmt.setOption( QSurfaceFormat::DeprecatedFunctions, false );
+
+		// V-Sync
+		fmt.setSwapInterval( 1 );
+		fmt.setSwapBehavior( QSurfaceFormat::DoubleBuffer );
+
+		fmt.setDepthBufferSize( 24 );
+		fmt.setStencilBufferSize( 8 );
 		fmt.setColorSpace( QColorSpace::SRgb );
-		fmt.setSamples( 4 );
+		fmt.setSamples( 1 << aa );
+
 		setFormat( fmt );
 		setTextureFormat( GL_SRGB8 );
 	}
@@ -206,9 +218,9 @@ void UVWidget::updateSettings()
 	QSettings settings;
 	settings.beginGroup( "Settings/Render/Colors/" );
 
-	cfg.background = settings.value( "Background" ).value<QColor>();
-	cfg.highlight = settings.value( "Highlight" ).value<QColor>();
-	cfg.wireframe = settings.value( "Wireframe" ).value<QColor>();
+	cfg.background = Color4( settings.value( "Background" ).value<QColor>() );
+	cfg.highlight = Color4( settings.value( "Highlight" ).value<QColor>() );
+	cfg.wireframe = Color4( settings.value( "Wireframe" ).value<QColor>() );
 
 	settings.endGroup();
 }
@@ -228,8 +240,9 @@ void UVWidget::initializeGL()
 	glEnable( GL_DEPTH_TEST );
 	glDisable( GL_CULL_FACE );
 	glDisable( GL_FRAMEBUFFER_SRGB );
+	glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
 
-	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+	glClearColor( cfg.background[0], cfg.background[1], cfg.background[2], cfg.background[3] );
 
 	// check for errors
 	GLenum err;
@@ -255,7 +268,7 @@ void UVWidget::paintGL()
 	cx->shrinkCache();
 	cx->setViewport( 0, 0, pixelWidth, pixelHeight );
 
-	FloatVector4	bgColor = FloatVector4( Color4( cfg.background ) );
+	FloatVector4	bgColor = FloatVector4( cfg.background );
 
 	glDepthMask( GL_TRUE );
 
@@ -338,29 +351,41 @@ void UVWidget::paintGL()
 
 	drawTexCoords();
 
-	// TODO
-#if 0
-	if ( !selectRect.isNull() ) {
-		glLoadIdentity();
-		glColor( Color4( cfg.highlight ) );
-		glBegin( GL_LINE_LOOP );
-		glVertex( mapToContents( selectRect.topLeft() ) );
-		glVertex( mapToContents( selectRect.topRight() ) );
-		glVertex( mapToContents( selectRect.bottomRight() ) );
-		glVertex( mapToContents( selectRect.bottomLeft() ) );
-		glEnd();
-	}
+	// draw selection
+	if ( ( !selectRect.isNull() || selectPoly.size() > 1 ) && ( prog = cx->useProgram( "lines.prog" ) ) != nullptr ) {
+		glEnable( GL_BLEND );
+		cx->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
 
-	if ( !selectPoly.isEmpty() ) {
-		glLoadIdentity();
-		glColor( Color4( cfg.highlight ) );
-		glBegin( GL_LINE_LOOP );
-		for ( const QPoint& p : selectPoly ) {
-			glVertex( mapToContents( p ) );
+		prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( FloatVector4( cfg.highlight ) ) );
+		prog->uni1i( "selectionParam", -1 );
+		prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe * 0.5f );
+
+		qsizetype	numVerts = std::max< qsizetype >( selectPoly.size(), 4 );
+		if ( vertexPosBuf.size() < numVerts )
+			vertexPosBuf.resize( numVerts );
+		Vector3 *	positions = vertexPosBuf.data();
+		const float *	p = &( positions[0][0] );
+
+		if ( !selectRect.isNull() ) {
+			positions[0] = Vector3( mapToContents( selectRect.topLeft() ), 1.0f );
+			positions[1] = Vector3( mapToContents( selectRect.bottomLeft() ), 1.0f );
+			positions[2] = Vector3( mapToContents( selectRect.bottomRight() ), 1.0f );
+			positions[3] = Vector3( mapToContents( selectRect.topRight() ), 1.0f );
+
+			cx->bindShape( 4, 0x03, 0, &p, nullptr );
+
+			cx->fn->glDrawArrays( GL_LINE_LOOP, 0, 4 );
 		}
-		glEnd();
+
+		if ( selectPoly.size() > 1 ) {
+			for ( qsizetype i = 0; i < selectPoly.size(); i++ )
+				positions[i] = Vector3( mapToContents( selectPoly.at( i ) ), 1.0f );
+
+			cx->bindShape( (unsigned int) selectPoly.size(), 0x03, 0, &p, nullptr );
+
+			cx->fn->glDrawArrays( GL_LINE_LOOP, 0, GLsizei( selectPoly.size() ) );
+		}
 	}
-#endif
 }
 
 void UVWidget::drawTexCoords()
@@ -372,11 +397,9 @@ void UVWidget::drawTexCoords()
 
 	vertexPosBuf.resize( numVerts );
 	vertexColorBuf.resize( numVerts );
-	indicesBuf.resize( numTriangles * 3 );
 
 	Vector3 *	vertexPosData = vertexPosBuf.data();
 	FloatVector4 *	vertexColorData = vertexColorBuf.data();
-	quint16 *	indicesData = indicesBuf.data();
 
 	FloatVector4	nlColor = FloatVector4( Color4(cfg.wireframe) ).blendValues( FloatVector4( 0.5f ), 0x08 );
 	FloatVector4	hlColor = FloatVector4( Color4(cfg.highlight) ).blendValues( FloatVector4( 0.5f ), 0x08 );
@@ -394,22 +417,8 @@ void UVWidget::drawTexCoords()
 		vertexPosData[i] = Vector3( v[0], v[1], z );
 	}
 
-	for ( qsizetype i = 0; i < numTriangles; i++ ) {
-		const auto &	f = faces.at( i );
-		unsigned int	v0 = (unsigned int) f.tc[0];
-		unsigned int	v1 = (unsigned int) f.tc[1];
-		unsigned int	v2 = (unsigned int) f.tc[2];
-		// remove invalid indices
-		unsigned int	d = std::min( v0, std::min( v1, v2 ) );
-		if ( d >= (unsigned int) numVerts )
-			d = 0;
-		indicesData[i * 3] = quint16( v0 < (unsigned int) numVerts ? v0 : d );
-		indicesData[i * 3 + 1] = quint16( v1 < (unsigned int) numVerts ? v1 : d );
-		indicesData[i * 3 + 2] = quint16( v2 < (unsigned int) numVerts ? v2 : d );
-	}
-
 	const float *	attrData[2] = { &( vertexPosData[0][0] ), &( vertexColorData[0][0] ) };
-	cx->bindShape( (unsigned int) numVerts, 0x43, size_t( numTriangles ) * 6, attrData, indicesData );
+	cx->bindShape( (unsigned int) numVerts, 0x43, size_t( numTriangles ) * 6, attrData, faces.constData() );
 
 	glEnable( GL_BLEND );
 	cx->fn->glBlendFuncSeparate( GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA );
@@ -457,6 +466,8 @@ void UVWidget::updateViewRect( int width, int height )
 
 	cx->projectionMatrix = Matrix4();
 	cx->setGlobalUniforms();
+
+	cx->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
 
 	Matrix4	modelViewMatrix;
 	double	invScaleX = 2.0 / scaleX;
@@ -609,7 +620,7 @@ void UVWidget::mousePressEvent( QMouseEvent * e )
 			if ( !e->modifiers().testFlag( Qt::ShiftModifier ) )
 				selectNone();
 
-			if ( e->modifiers().testFlag( Qt::AltModifier ) ) {
+			if ( e->modifiers().testFlag( Qt::AltModifier ) || e->modifiers().testFlag( Qt::ControlModifier ) ) {
 				selectPoly << pixelPos;
 			} else {
 				selectRect.setTopLeft( mousePos );
@@ -1198,6 +1209,9 @@ bool UVWidget::setNifData( NifModel * nifModel, const QModelIndex & nifIndex )
 
 bool UVWidget::setTexCoords( const QVector<Triangle> * triangles )
 {
+	faces.clear();
+	texcoords2faces.clear();
+
 	if ( iTexCoords.isValid() && nif->isArray( iTexCoords ) )
 		texcoords = nif->getArray<Vector2>( iTexCoords );
 
@@ -1227,20 +1241,25 @@ bool UVWidget::setTexCoords( const QVector<Triangle> * triangles )
 		}
 	}
 
-	if ( tris.isEmpty() )
+	if ( tris.isEmpty() || texcoords.isEmpty() )
 		return false;
 
 	QVectorIterator<Triangle> itri( tris );
 
+	unsigned int	numVerts = (unsigned int) texcoords.size();
 	while ( itri.hasNext() ) {
-		const Triangle & t = itri.next();
-
-		int fIdx = faces.size();
-		faces.append( face( fIdx, t[0], t[1], t[2] ) );
-
+		Triangle	t = itri.next();
+		unsigned int	d = std::min( t[0], std::min( t[1], t[2] ) );
+		if ( d >= numVerts )
+			d = 0;
+		int	fIdx = int( faces.size() );
 		for ( int i = 0; i < 3; i++ ) {
-			texcoords2faces.insert( t[i], fIdx );
+			if ( t[i] >= numVerts )
+				t[i] = d;		// remove invalid indices
+			else
+				texcoords2faces.insert( int( t[i] ), fIdx );
 		}
+		faces.append( t );
 	}
 
 	return true;
@@ -1393,8 +1412,8 @@ void UVWidget::selectFaces()
 	for ( const auto s : QList<int>( sel ) ) {
 		for ( const auto f : texcoords2faces.values( s ) ) {
 			for ( int i = 0; i < 3; i++ ) {
-				if ( !sel.contains( faces[f].tc[i] ) )
-					sel.append( faces[f].tc[i] );
+				if ( !sel.contains( faces.at(f)[i] ) )
+					sel.append( faces.at(f)[i] );
 			}
 		}
 	}
@@ -1411,8 +1430,8 @@ void UVWidget::selectConnected()
 		for ( const auto s : QList<int>( sel ) ) {
 			for ( const auto f :texcoords2faces.values( s ) ) {
 				for ( int i = 0; i < 3; i++ ) {
-					if ( !sel.contains( faces[f].tc[i] ) ) {
-						sel.append( faces[f].tc[i] );
+					if ( !sel.contains( faces.at(f)[i] ) ) {
+						sel.append( faces.at(f)[i] );
 						more = true;
 					}
 				}

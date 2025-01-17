@@ -168,25 +168,11 @@ private:
 	QList<QPoint> selectPoly;
 	unsigned int selectCycle = 0;
 
-	//! A UV face
-	struct face
-	{
-		int index = -1;
-
-		int tc[3] = {0};
-
-		bool contains( int v ) { return ( tc[0] == v || tc[1] == v || tc[2] == v ); }
-
-		face() {}
-		face( int idx, int tc1, int tc2, int tc3 ) : index( idx ) { tc[0] = tc1; tc[1] = tc2; tc[2] = tc3; }
-	};
-
 	QVector<Vector2> texcoords;
-	QVector<face> faces;
+	QVector<Triangle> faces;
+	QMultiMap<int, int> texcoords2faces;
 	QVector<Vector3> vertexPosBuf;
 	QVector<FloatVector4> vertexColorBuf;
-	QVector<quint16> indicesBuf;
-	QMultiMap<int, int> texcoords2faces;
 
 	QSize sHint;
 
@@ -277,9 +263,9 @@ private:
 
 	struct Settings
 	{
-		QColor background;
-		QColor highlight;
-		QColor wireframe;
+		Color4 background;
+		Color4 highlight;
+		Color4 wireframe;
 	} cfg;
 };
 
