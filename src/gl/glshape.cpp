@@ -37,6 +37,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "model/nifmodel.h"
 #include "io/material.h"
 #include "gl/renderer.h"
+#include "gl/glmesh.h"
 #include "glview.h"
 
 #include <QDebug>
@@ -92,7 +93,7 @@ void Shape::updateBoneTransforms()
 		transformRigid = true;
 		return;
 	}
-	boneTransforms.fill( FloatVector4( 0.0f ), numBones * 3 );
+	boneTransforms.assign( size_t( numBones ) * 3, FloatVector4( 0.0f ) );
 	transformRigid = false;
 
 	Node * root = findParent( skeletonRoot );
@@ -122,18 +123,18 @@ void Shape::updateBoneTransforms()
 	QVector< Vector3 >	transVerts = verts;
 	Vector3 *	p = transVerts.data();
 	qsizetype	numVerts = transVerts.size();
-	int	numWeights = ( boneWeights1.size() < numVerts ? 4 : 8 );
+	int	numWeights = ( qsizetype( boneWeights1.size() ) < numVerts ? 4 : 8 );
 	for ( qsizetype i = 0; i < numVerts; i++ ) {
 		FloatVector4	v = FloatVector4::convertVector3( &( p[i][0] ) );
 		v[3] = 1.0f;
-		const float *	wp = &( boneWeights0.at( i )[0] );
+		const float *	wp = &( boneWeights0[i][0] );
 		FloatVector4	xTmp( 0.0f );
 		FloatVector4	yTmp( 0.0f );
 		FloatVector4	zTmp( 0.0f );
 		float	wSum = 0.0f;
 		for ( int j = 0; j < numWeights; j++, wp++ ) {
 			if ( j == 4 )
-				wp = &( boneWeights1.at( i )[0] );
+				wp = &( boneWeights1[i][0] );
 			float	w = *wp;
 			if ( !( w > 0.0f ) )
 				break;
@@ -141,7 +142,7 @@ void Shape::updateBoneTransforms()
 			if ( b < 0 || b >= numBones ) [[unlikely]]
 				continue;
 			w -= float( b );
-			const FloatVector4 *	bt = boneTransforms.constData() + ( b * 3 );
+			const FloatVector4 *	bt = boneTransforms.data() + ( b * 3 );
 			FloatVector4	vTmp = v * w;
 			xTmp += vTmp * bt[0];
 			yTmp += vTmp * bt[1];
@@ -159,7 +160,6 @@ void Shape::updateBoneTransforms()
 	boundSphere = BoundSphere( transVerts );
 #endif
 
-	boundSphere.applyInv( worldTrans() );
 	needUpdateBounds = false;
 }
 
@@ -496,33 +496,30 @@ void Shape::setUniforms( NifSkopeOpenGLContext::Program * prog ) const
 	if ( !prog ) [[unlikely]]
 		return;
 
-	const Transform &	t = viewTrans();
-	const Transform *	v = &( scene->view );
-	const Transform *	m = &t;
 	unsigned int	nifVersion = 0;
 	if ( scene->nifModel ) [[likely]]
 		nifVersion = scene->nifModel->getBSVersion();
 
-	qsizetype	numBones = 0;
+	size_t	numBones = 0;
 	if ( nifVersion < 170 ) {
 		// TODO: Starfield skinning is not implemented
 		if ( !transformRigid )
-			numBones = std::min< qsizetype >( boneTransforms.size() / 3, qsizetype( prog->maxNumBones ) );
+			numBones = std::min< size_t >( boneTransforms.size() / 3, size_t( prog->maxNumBones ) );
 		prog->uni1i( "numBones", int( numBones ) );
 	}
 
 	if ( numBones > 0 ) {
-		int	l = prog->uniLocation( "boneTransforms" );
-		if ( l >= 0 )
-			prog->f->glUniformMatrix3x4fv( l, GLsizei( numBones ), GL_FALSE, &( boneTransforms.constFirst()[0] ) );
-		m = v;
+		if ( int l = prog->uniLocation( "boneTransforms" ); l >= 0 )
+			prog->f->glUniformMatrix3x4fv( l, GLsizei( numBones ), GL_FALSE, &( boneTransforms.front()[0] ) );
 	}
 
+	const Transform &	v = viewTrans();
+	bool	modelSpaceNormals = false;
 	if ( nifVersion < 130 && prog->name == "sk_msn.prog" ) [[unlikely]]
-		v = &t;
-	prog->uni3m( "viewMatrix", v->rotation );
-	prog->uni3m( "normalMatrix", m->rotation );
-	prog->uni4m( "modelViewMatrix", m->toMatrix4() );
+		modelSpaceNormals = true;
+	prog->uni3m( "viewMatrix", ( !modelSpaceNormals ? scene->view.rotation : v.rotation ) );
+	prog->uni3m( "normalMatrix", v.rotation );
+	prog->uni4m( "modelViewMatrix", v.toMatrix4() );
 }
 
 bool Shape::bindShape() const
@@ -558,12 +555,12 @@ bool Shape::bindShape() const
 		attrModeMask |= 0x00030000ULL;
 	}
 
-	if ( boneWeights0.size() >= numVerts ) [[unlikely]] {
-		vertexAttrs[5] = &( boneWeights0.constFirst()[0] );
+	if ( boneWeights0.size() >= size_t( numVerts ) ) [[unlikely]] {
+		vertexAttrs[5] = &( boneWeights0.front()[0] );
 		attrModeMask |= 0x00400000ULL;
 	}
-	if ( boneWeights1.size() >= numVerts ) [[unlikely]] {
-		vertexAttrs[6] = &( boneWeights1.constFirst()[0] );
+	if ( boneWeights1.size() >= size_t( numVerts ) ) [[unlikely]] {
+		vertexAttrs[6] = &( boneWeights1.front()[0] );
 		attrModeMask |= 0x04000000ULL;
 	}
 

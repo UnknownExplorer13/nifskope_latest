@@ -67,6 +67,21 @@ void Mesh::updateImpl( const NifModel * nif, const QModelIndex & index )
 	}
 }
 
+void Mesh::addBoneWeight( int vertexNum, int boneNum, float weight )
+{
+	size_t	numVerts = size_t( verts.size() );
+	if ( !( (unsigned int) vertexNum < numVerts && ( boneNum & ~255 ) == 0 && weight > 0.0f ) )
+		return;
+	FloatVector4 *	w = boneWeights0.data() + vertexNum;
+	if ( (*w)[3] > 0.0f ) [[unlikely]] {
+		if ( boneWeights1.size() < numVerts ) [[unlikely]]
+			boneWeights1.assign( numVerts, FloatVector4( 0.0f ) );
+		w = boneWeights1.data() + vertexNum;
+	}
+	w->shuffleValues( 0x93 );	// 3, 0, 1, 2
+	(*w)[0] = float( boneNum ) + ( std::min( weight, 1.0f ) * float( 65535.0 / 65536.0 ) );
+}
+
 void Mesh::updateData( const NifModel * nif )
 {
 	resetSkinning();
@@ -89,6 +104,9 @@ void Mesh::updateData( const NifModel * nif )
 			iSkinPart = nif->getBlockIndex( nif->getLink( iSkinData, "Skin Partition" ), "NiSkinPartition" );
 		}
 
+		qsizetype	numVerts = verts.size();
+		boneWeights0.assign( size_t( numVerts ), FloatVector4( 0.0f ) );
+
 		skeletonRoot = nif->getLink( iSkin, "Skeleton Root" );
 		skeletonTrans = Transform( nif, iSkinData );
 
@@ -98,12 +116,21 @@ void Mesh::updateData( const NifModel * nif )
 		if ( idxBones.isValid() ) {
 			int nTotalBones = bones.size();
 			int nBoneList = nif->rowCount( idxBones );
-#if 0
-			// TODO: Ignore weights listed in NiSkinData if NiSkinPartition exists
-			int vcnt = ( !iSkinPart.isValid() ? numVerts : 0 );
-#endif
-			for ( int b = 0; b < nBoneList && b < nTotalBones; b++ )
+
+			for ( int b = 0; b < nBoneList && b < nTotalBones; b++ ) {
 				boneData.append( BoneData( nif, nif->getIndex( idxBones, b ), bones[b] ) );
+
+				// Ignore weights listed in NiSkinData if NiSkinPartition exists
+				if ( !iSkinPart.isValid() ) {
+					QModelIndex idxWeights = nif->getIndex( nif->getIndex( idxBones, b ), "Vertex Weights" );
+					if ( idxWeights.isValid() ) {
+						for ( int c = 0; c < nif->rowCount( idxWeights ); c++ ) {
+							QModelIndex idx = nif->getIndex( idxWeights, c );
+							addBoneWeight( nif->get<int>( idx, "Index" ), b, nif->get<float>( idx, "Weight" ) );
+						}
+					}
+				}
+			}
 		}
 
 		if ( iSkinPart.isValid() ) {
@@ -113,8 +140,20 @@ void Mesh::updateData( const NifModel * nif )
 			uint numStrips = 0;
 			for ( int i = 0; i < nif->rowCount( idx ) && idx.isValid(); i++ ) {
 				partitions.append( SkinPartition( nif, nif->getIndex( idx, i ) ) );
-				numTris += partitions[i].triangles.size();
-				numStrips += partitions[i].tristrips.size();
+				SkinPartition &	part = partitions.last();
+				numTris += part.triangles.size();
+				numStrips += part.tristrips.size();
+
+				for ( int v = 0; v < part.vertexMap.size(); v++ ) {
+					int	vindex = part.vertexMap[v];
+					if ( vindex < 0 || vindex >= numVerts )
+						break;
+
+					for ( int w = 0; w < part.numWeightsPerVertex; w++ ) {
+						auto	weight = part.weights[v * part.numWeightsPerVertex + w];
+						addBoneWeight( vindex, part.boneMap.value( weight.first ), weight.second );
+					}
+				}
 			}
 
 			triangles.clear();
@@ -623,46 +662,12 @@ void Mesh::transformShapes()
 
 	Node::transformShapes();
 
-	transformRigid = true;
-
-	if ( isSkinned && ( boneData.size() || partitions.size() ) && scene->hasOption(Scene::DoSkinning) ) {
-		transformRigid = false;
-
-		Node * root = findParent( skeletonRoot );
-
-		boundSphere = BoundSphere();
-
-		if ( partitions.size() ) {
-			for ( const SkinPartition& part : partitions ) {
-				QVector<Transform> boneTrans( part.boneMap.size() );
-
-				for ( int t = 0; t < boneTrans.size(); t++ ) {
-					Node * bone = root ? root->findChild( bones.value( part.boneMap[t] ) ) : 0;
-					boneTrans[ t ] = scene->view;
-
-					if ( bone )
-						boneTrans[ t ] = boneTrans[ t ] * bone->localTrans( skeletonRoot ) * boneData.value( part.boneMap[t] ).trans;
-
-					//if ( bone ) boneTrans[ t ] = bone->viewTrans() * boneData.value( part.boneMap[t] ).trans;
-				}
-			}
-		} else {
-			int x = 0;
-			for ( const BoneData& bw : boneData ) {
-				Transform trans = viewTrans() * skeletonTrans;
-				Node * bone = root ? root->findChild( bw.bone ) : nullptr;
-
-				if ( bone ) {
-					trans = trans * bone->localTrans( skeletonRoot ) * bw.trans;
-					boneData[x].tcenter = bone->viewTrans() * bw.center;
-				}
-				x++;
-			}
-		}
-
-		boundSphere.applyInv( worldTrans() );
-		needUpdateBounds = false;
+	if ( !( isSkinned && scene->hasOption(Scene::DoSkinning) ) ) [[likely]] {
+		transformRigid = true;
+		return;
 	}
+
+	updateBoneTransforms();
 }
 
 BoundSphere Mesh::bounds() const

@@ -159,7 +159,7 @@ void BSShape::updateData( const NifModel * nif )
 		for ( int i = 0; i < nTotalBones; i++ )
 			boneData[i].bone = bones[i];
 
-		boneWeights0.fill( FloatVector4( 0.0f ), numVerts );
+		boneWeights0.assign( size_t( numVerts ), FloatVector4( 0.0f ) );
 		boneWeights1.clear();
 
 		for ( int i = 0; i < numVerts; i++ ) {
