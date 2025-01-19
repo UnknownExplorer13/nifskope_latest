@@ -863,11 +863,13 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 
 	// Pick BSFurnitureMarker
 	if ( choose > 0 ) {
-		auto furnBlock = model->getBlockIndex( model->index( 3, 0, model->getBlockIndex( choose & 0x0ffff ) ), "BSFurnitureMarker" );
+		int b = choose & 0x0ffff;
+		int p = ( choose >> 16 ) & 0x0ffff;
+		auto furnBlock = model->getBlockIndex( b, "BSFurnitureMarker" );
 
-		if ( furnBlock.isValid() ) {
-			furn = choose >> 16;
-			choose &= 0x0ffff;
+		if ( furnBlock.isValid() && model->getIndex( model->getIndex( furnBlock, "Positions" ), p ).isValid() ) {
+			furn = p;
+			choose = b;
 		}
 	}
 
@@ -912,19 +914,19 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 
 	if ( scene->isSelModeVertex() ) {
 		// Vertex
-		int block = choose >> 16;
+		int block = ( choose >> 16 ) & 0xFFFF;
 		int vert = choose & 0xFFFF;
 
 		auto shape = scene->shapes.value( block );
 		if ( shape )
 			chooseIndex = shape->vertexAt( vert );
-	} else if ( choose != -1 ) {
+	} else if ( choose >= 0 ) {
 		// Block Index
 		chooseIndex = model->getBlockIndex( choose );
 
 		if ( furn != -1 ) {
 			// Furniture Row @ Block Index
-			chooseIndex = model->index( furn, 0, model->index( 3, 0, chooseIndex ) );
+			chooseIndex = model->getIndex( model->getIndex( chooseIndex, "Positions" ), furn );
 		}
 	}
 
