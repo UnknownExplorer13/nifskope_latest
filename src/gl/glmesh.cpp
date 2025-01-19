@@ -479,8 +479,8 @@ void Mesh::updateData_NiMesh( const NifModel * nif )
 	}
 
 	// Clear unused vertex attributes
-	//	Note: Do not clear normals as this breaks fixed function for some reason
-	// TODO (Gavrant): figure out why clearing normals "breaks fixed function for some reason"
+	if ( !(semFlags & NiMesh::HAS_NORMAL) )
+		norms.clear();
 	if ( !(semFlags & NiMesh::HAS_BINORMAL) )
 		bitangents.clear();
 	if ( !(semFlags & NiMesh::HAS_TANGENT) )
@@ -844,42 +844,42 @@ void Mesh::drawSelection() const
 	}
 
 	if ( n == "Points" ) {
-		// TODO: implement this
-#if 0
-		glBegin( GL_POINTS );
-		auto nif = NifModel::fromIndex( iData );
 		QModelIndex points = nif->getIndex( iData, "Points" );
 
 		if ( points.isValid() ) {
-			for ( int j = 0; j < nif->rowCount( points ); j++ ) {
-				QModelIndex iPoints = nif->getIndex( points, j );
+			scene->setGLColor( scene->wireframeColor );
+			scene->setGLPointSize( GLView::Settings::vertexPointSize );
+			setUniforms( scene->setupProgram( "selection.prog", GL_POINTS ) );
 
-				for ( int k = 0; k < nif->rowCount( iPoints ); k++ ) {
-					glVertex( verts.value( nif->get<quint16>( nif->getIndex( iPoints, k ) ) ) );
+			for ( int j = 0; j < nif->rowCount( points ) && j < tristripOffsets.size(); j++ ) {
+				QModelIndex	iPoints = nif->getIndex( points, j );
+				if ( !iPoints.isValid() )
+					continue;
+				auto	strip = tristripOffsets.at( j );
+
+				if ( j == i && nif->isArray( idx ) ) {
+					glDepthFunc( GL_ALWAYS );
+					setGLColor( scene->highlightColor );
+				} else {
+					glDepthFunc( GL_LEQUAL );
+					setGLColor( scene->wireframeColor );
+				}
+
+				glPolygonMode( GL_FRONT_AND_BACK, GL_POINT );
+				context->fn->glDrawElements( GL_TRIANGLES, GLsizei( strip.second * 3 ),
+												GL_UNSIGNED_SHORT, (void *) ( strip.first * 6 ) );
+				glPolygonMode( GL_FRONT_AND_BACK, GL_FILL );
+
+				if ( i >= 0 && i < nif->rowCount( iPoints ) && !nif->isArray( idx ) && iPoints == idx.parent() ) {
+					glDepthFunc( GL_ALWAYS );
+					setGLColor( scene->highlightColor );
+
+					qsizetype	k = nif->get<quint16>( iPoints, i );
+					if ( k < verts.size() )
+						context->fn->glDrawArrays( GL_POINTS, GLint( k ), 1 );
 				}
 			}
 		}
-
-		glEnd();
-
-		if ( i >= 0 ) {
-			glDepthFunc( GL_ALWAYS );
-			glHighlightColor();
-			glBegin( GL_POINTS );
-			QModelIndex iPoints = nif->getIndex( points, i );
-
-			if ( nif->isArray( idx ) ) {
-				for ( int j = 0; j < nif->rowCount( iPoints ); j++ ) {
-					glVertex( verts.value( nif->get<quint16>( nif->getIndex( iPoints, j ) ) ) );
-				}
-			} else {
-				iPoints = idx.parent();
-				glVertex( verts.value( nif->get<quint16>( nif->getIndex( iPoints, i ) ) ) );
-			}
-
-			glEnd();
-		}
-#endif
 	}
 
 	if ( n == "Faces" || n == "Triangles" ) {
@@ -896,47 +896,36 @@ void Mesh::drawSelection() const
 			Shape::drawTriangles( tristripOffsets[i].first, tristripOffsets[i].second, scene->highlightColor );
 	}
 
-	if ( n == "Partitions" ) {
+	if ( n == "Partitions" && !( partitions.isEmpty() || verts.isEmpty() ) ) {
+		qsizetype	k = 0;
+		qsizetype	l = 0;
 
-		for ( int c = 0; c < partitions.size(); c++ ) {
-			// TODO: implement this
-#if 0
-			if ( c == i )
-				glHighlightColor();
-			else
-				glNormalColor();
+		for ( int c = 0; c < partitions.size() && k < triangles.size(); c++ ) {
+			scene->setGLColor( c != i ? scene->wireframeColor : scene->highlightColor );
+			scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
+			setUniforms( scene->setupProgram( "wireframe.prog", GL_TRIANGLES ) );
 
-			QVector<int> vmap = partitions[c].vertexMap;
+			const auto &	part = partitions.at( c );
 
-			for ( const Triangle& tri : partitions[c].triangles ) {
-				glBegin( GL_LINE_STRIP );
-				glVertex( verts.value( vmap.value( tri.v1() ) ) );
-				glVertex( verts.value( vmap.value( tri.v2() ) ) );
-				glVertex( verts.value( vmap.value( tri.v3() ) ) );
-				glVertex( verts.value( vmap.value( tri.v1() ) ) );
-				glEnd();
+			qsizetype	triCnt = part.triangles.size();
+			triCnt = std::min< qsizetype >( triCnt, triangles.size() - k );
+			if ( triCnt > 0 ) {
+				context->fn->glDrawElements( GL_TRIANGLES, GLsizei( triCnt * 3 ),
+												GL_UNSIGNED_SHORT, (void *) ( k * 6 ) );
+				k = k + triCnt;
 			}
-			for ( const TriStrip& strip : partitions[c].tristrips ) {
-				quint16 a = vmap.value( strip.value( 0 ) );
-				quint16 b = vmap.value( strip.value( 1 ) );
 
-				for ( int v = 2; v < strip.size(); v++ ) {
-					quint16 c = vmap.value( strip[v] );
-
-					if ( a != b && b != c && c != a ) {
-						glBegin( GL_LINE_STRIP );
-						glVertex( verts.value( a ) );
-						glVertex( verts.value( b ) );
-						glVertex( verts.value( c ) );
-						glVertex( verts.value( a ) );
-						glEnd();
-					}
-
-					a = b;
-					b = c;
+			qsizetype	stripCnt = part.tristrips.size();
+			for ( qsizetype j = 0; j < stripCnt && l < tristripOffsets.size(); j++, l++ ) {
+				k = tristripOffsets.at( l ).first;
+				qsizetype	triCnt = tristripOffsets.at( l ).second;
+				triCnt = std::min< qsizetype >( triCnt, triangles.size() - k );
+				if ( triCnt > 0 ) {
+					context->fn->glDrawElements( GL_TRIANGLES, GLsizei( triCnt * 3 ),
+													GL_UNSIGNED_SHORT, (void *) ( k * 6 ) );
+					k = k + triCnt;
 				}
 			}
-#endif
 		}
 	}
 
@@ -996,4 +985,53 @@ void Mesh::updateLodLevel()
 		numTriangles = std::clamp< qsizetype >( numTriangles, 0, triangles.size() );
 	}
 	lodTriangleCount = numTriangles;
+}
+
+
+#define SEM(string) {#string, E_##string}
+
+namespace NiMesh
+{
+	const QMap<QString, Semantic> semanticStrings = {
+		// Vertex semantics
+		SEM( POSITION ),
+		SEM( NORMAL ),
+		SEM( BINORMAL ),
+		SEM( TANGENT ),
+		SEM( TEXCOORD ),
+		SEM( BLENDWEIGHT ),
+		SEM( BLENDINDICES ),
+		SEM( COLOR ),
+		SEM( PSIZE ),
+		SEM( TESSFACTOR ),
+		SEM( DEPTH ),
+		SEM( FOG ),
+		SEM( POSITIONT ),
+		SEM( SAMPLE ),
+		SEM( DATASTREAM ),
+		SEM( INDEX ),
+
+		// Skinning semantics
+		SEM( BONEMATRICES ),
+		SEM( BONE_PALETTE ),
+		SEM( UNUSED0 ),
+		SEM( POSITION_BP ),
+		SEM( NORMAL_BP ),
+		SEM( BINORMAL_BP ),
+		SEM( TANGENT_BP ),
+
+		// Morph weights semantics
+		SEM( MORPHWEIGHTS ),
+
+		// Normal sharing semantics, for use in runtime normal calculation
+		SEM( NORMALSHAREINDEX ),
+		SEM( NORMALSHAREGROUP ),
+
+		// Instancing Semantics
+		SEM( TRANSFORMS ),
+		SEM( INSTANCETRANSFORMS ),
+
+		// Display list semantics
+		SEM( DISPLAYLIST )
+	};
 }
