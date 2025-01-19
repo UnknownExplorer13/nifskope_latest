@@ -961,7 +961,7 @@ void Scene::drawCone( const Vector3 & c, Vector3 n, float a, int sd )
 void Scene::drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const Vector3 & plane,
 								float coneAngle, float minPlaneAngle, float maxPlaneAngle, int sd )
 {
-	Vector3 *	positions = allocateVertexAttr( size_t( sd ) * 4 );
+	Vector3 *	positions = allocateVertexAttr( size_t( sd ) + 2 );
 	if ( !positions )
 		return;
 
@@ -973,20 +973,15 @@ void Scene::drawRagdollCone( const Vector3 & pivot, const Vector3 & twist, const
 	m[3][3] = 1.0f;
 	pushAndMultModelViewMatrix( Matrix4( &( m[0][0] ) ) );
 
-	Vector3	p0( 0.0f, std::sin( maxPlaneAngle ), 1.0f );
-	for ( int i = 0; i < sd; i++ ) {
-		float	f = ( 2.0f * PI * float(i + 1) / float(sd) );
+	positions[0] = Vector3();
+	for ( int i = 0; i <= sd; i++ ) {
+		float	f = ( 2.0f * PI * float(i) / float(sd) );
 		float	x = std::sin( f );
 		float	y = std::sin( f <= PI / 2 || f >= 3 * PI / 2 ? maxPlaneAngle : -minPlaneAngle ) * std::cos( f );
-		Vector3	p1( x, y, 1.0f );
-		positions[i * 4] = Vector3();
-		positions[i * 4 + 1] = p0;
-		positions[i * 4 + 2] = p0;
-		positions[i * 4 + 3] = p1;
-		p0 = p1;
+		positions[i + 1] = Vector3( x, y, 1.0f );
 	}
 
-	drawLines( positions, size_t( sd ) * 4 );
+	drawTriangles( positions, size_t( sd ) + 2, nullptr, true, GL_TRIANGLE_FAN );
 	popModelViewMatrix();
 }
 
@@ -1091,7 +1086,7 @@ void Scene::drawSolidArc( const Vector3 & c, const Vector3 & n, const Vector3 & 
 		positions[j * 2 + 1] = Vector3( std::sin( f ), std::cos( f ), -1.0f );
 	}
 
-	drawTriangles( positions, numVerts, nullptr, true, GL_TRIANGLE_STRIP, 0, 0, nullptr );
+	drawTriangles( positions, numVerts, nullptr, true, GL_TRIANGLE_STRIP );
 	popModelViewMatrix();
 
 	if ( cull )
