@@ -56,7 +56,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QLabel>
 #include <QMenu>
 #include <QMouseEvent>
-#include <QColorSpace>
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 #include <QPushButton>
@@ -126,7 +125,6 @@ UVWidget::UVWidget( QWidget * parent )
 
 		fmt.setDepthBufferSize( 24 );
 		fmt.setStencilBufferSize( 8 );
-		fmt.setColorSpace( QColorSpace::SRgb );
 		fmt.setSamples( 1 << aa );
 
 		setFormat( fmt );
