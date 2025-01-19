@@ -653,17 +653,46 @@ void Node::drawVertexSelection( qsizetype numVerts, int i )
 	}
 }
 
-void Node::drawTriangleSelection( qsizetype numTriangles, int i )
+void Node::drawTriangleSelection( const QVector<Triangle> & triangles, int i, int n, int startVertex, int endVertex )
 {
-	if ( i < 0 || i >= numTriangles )
+	if ( i < 0 || i >= triangles.size() || n < 1 )
 		return;
 
 	glDepthFunc( GL_ALWAYS );
 
 	scene->setGLColor( scene->highlightColor );
 	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
-	if ( scene->setupProgram( "wireframe.prog", GL_TRIANGLES ) )
-		scene->renderer->fn->glDrawElements( GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, (void *) ( qsizetype( i ) * 6 ) );
+	if ( !scene->setupProgram( "wireframe.prog", GL_TRIANGLES ) )
+		return;
+
+	n = std::min( n, int( triangles.size() - i ) );
+	if ( endVertex < 0 ) {
+		scene->renderer->fn->glDrawElements( GL_TRIANGLES, GLsizei( n ) * 3,
+												GL_UNSIGNED_SHORT, (void *) ( qsizetype( i ) * 6 ) );
+		return;
+	}
+
+	int	startPos = 0;
+	int	endPos = 0;
+	for ( ; n > 0; i++, n-- ) {
+		const Triangle &	tri = triangles.at( i );
+		if ( int( tri[0] ) >= startVertex && int( tri[0] ) < endVertex ) {
+			if ( std::min< int >( tri[1], tri[2] ) >= startVertex && std::max< int >( tri[1], tri[2] ) < endVertex ) {
+				endPos++;
+				continue;
+			}
+			qDebug() << "triangle with multiple materials?" << i;
+		}
+		if ( endPos > startPos ) {
+			scene->renderer->fn->glDrawElements( GL_TRIANGLES, GLsizei( endPos - startPos ) * 3,
+													GL_UNSIGNED_SHORT, (void *) ( qsizetype( startPos ) * 6 ) );
+		}
+		startPos = i + 1;
+	}
+	if ( endPos > startPos ) {
+		scene->renderer->fn->glDrawElements( GL_TRIANGLES, GLsizei( endPos - startPos ) * 3,
+												GL_UNSIGNED_SHORT, (void *) ( qsizetype( startPos ) * 6 ) );
+	}
 }
 
 void Node::drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t, int i )
@@ -853,7 +882,7 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 							drawTriangleIndex( verts, triangles[t], t );
 #endif
 					} else if ( nif->isCompound( nif->itemStrType( scene->currentIndex ) ) ) {
-						drawTriangleSelection( triangles.size(), i );
+						drawTriangleSelection( triangles, i );
 #if 0
 						drawTriangleIndex( verts, triangles[i], i );
 #endif
@@ -881,20 +910,17 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 						start_vertex += totalVerts;
 					}
 
+					drawTriangleSelection( triangles, 0, int( triangles.size() ), start_vertex, end_vertex );
+#if 0
 					for ( int t = 0; t < triangles.size(); t++ ) {
 						Triangle tri = triangles.at( t );
 
-						if ( (start_vertex <= tri[0]) && (tri[0] < end_vertex) ) {
-							if ( (start_vertex <= tri[1]) && (tri[1] < end_vertex) && (start_vertex <= tri[2]) && (tri[2] < end_vertex) ) {
-								drawTriangleSelection( triangles.size(), t );
-#if 0
+						if ( start_vertex <= tri[0] && tri[0] < end_vertex ) {
+							if ( start_vertex <= std::min( tri[1], tri[2] ) && std::max( tri[1], tri[2] ) < end_vertex )
 								drawTriangleIndex( verts, tri, t );
-#endif
-							} else {
-								qDebug() << "triangle with multiple materials?" << t;
-							}
 						}
 					}
+#endif
 				}
 			}
 			// Handle Selection of bhkPackedNiTriStripsShape
@@ -930,20 +956,17 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 					}
 
 					// highlight the triangles of the subshape
+					drawTriangleSelection( triangles, 0, int( triangles.size() ), start_vertex, end_vertex );
+#if 0
 					for ( int t = 0; t < triangles.size(); t++ ) {
 						Triangle tri = triangles.at( t );
 
-						if ( (start_vertex <= tri[0]) && (tri[0] < end_vertex) ) {
-							if ( (start_vertex <= tri[1]) && (tri[1] < end_vertex) && (start_vertex <= tri[2]) && (tri[2] < end_vertex) ) {
-								drawTriangleSelection( triangles.size(), t );
-#if 0
+						if ( start_vertex <= tri[0] && tri[0] < end_vertex ) {
+							if ( start_vertex <= std::min( tri[1], tri[2] ) && std::max( tri[1], tri[2] ) < end_vertex )
 								drawTriangleIndex( verts, tri, t );
-#endif
-							} else {
-								qDebug() << "triangle with multiple materials?" << t;
-							}
 						}
 					}
+#endif
 				}
 			}
 		}

@@ -148,9 +148,10 @@ protected:
 	// set the vertex color override uniform for the current shader program
 	void setGLColor( FloatVector4 c ) const;
 
-	// mesh data needs to be bound before calling the following three functions
+	// mesh data needs to be bound before calling the following two functions
 	void drawVertexSelection( qsizetype numVerts, int i );
-	void drawTriangleSelection( qsizetype numTriangles, int i );
+	void drawTriangleSelection( const QVector<Triangle> & triangles, int i, int n = 1,
+								int startVertex = 0, int endVertex = -1 );
 	void drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t, int i );
 	void drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
 						Scene * scene, FloatVector4 origin_color4fv, const Matrix4 & parentTransform );
