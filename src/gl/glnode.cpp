@@ -34,10 +34,8 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #include "nifskope.h"
 #include "gl/controllers.h"
-#include "gl/glmarker.h"
 #include "gl/glscene.h"
-#include "gl/marker/furniture.h"
-#include "gl/marker/constraints.h"
+#include "gl/glmarker.h"
 #include "model/nifmodel.h"
 #include "ui/settingsdialog.h"
 #include "glview.h"
@@ -1223,14 +1221,14 @@ void Node::drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstra
 		t.rotation.fromEuler( 0.0f, angle, 0.0f );
 		scene->multModelViewMatrix( t );
 
-		drawMarker( &BumperMarker01 );
+		GLMarker::BumperMarker01.drawMarker( scene, true );
 
 		/*draw second marker*/
 		t.translation = Vector3( minDistance < maxDistance ? ( d2 - d1 ).length() : 0.0f, 0.0f, 0.0f );
 		t.rotation.fromEuler( 0.0f, 0.0f, (float)PI );
 		scene->multModelViewMatrix( t );
 
-		drawMarker( &BumperMarker01 );
+		GLMarker::BumperMarker01.drawMarker( scene, true );
 
 		/* draw Pivot B */
 		scene->loadModelViewMatrix( mBodyB );
@@ -1473,25 +1471,25 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 			if ( entry & 0x1 ) {
 				// Chair Front
 				flip[i] = pos;
-				mark[i] = &ChairFront;
+				mark[i] = &GLMarker::ChairFront;
 				i++;
 			}
 			if ( entry & 0x2 ) {
 				// Chair Behind
 				flip[i] = pos;
-				mark[i] = &ChairBehind;
+				mark[i] = &GLMarker::ChairBehind;
 				i++;
 			}
 			if ( entry & 0x4 ) {
 				// Chair Right
 				flip[i] = neg;
-				mark[i] = &ChairLeft;
+				mark[i] = &GLMarker::ChairLeft;
 				i++;
 			}
 			if ( entry & 0x8 ) {
 				// Chair Left
 				flip[i] = pos;
-				mark[i] = &ChairLeft;
+				mark[i] = &GLMarker::ChairLeft;
 				i++;
 			}
 			break;
@@ -1503,25 +1501,25 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 			if ( entry & 0x1 ) {
 				// Bed Front
 				//flip[i] = pos;
-				//mark[i] = &FurnitureMarker03;
+				//mark[i] = &GLMarker::FurnitureMarker03;
 				//i++;
 			}
 			if ( entry & 0x2 ) {
 				// Bed Behind
 				//flip[i] = pos;
-				//mark[i] = &FurnitureMarker04;
+				//mark[i] = &GLMarker::FurnitureMarker04;
 				//i++;
 			}
 			if ( entry & 0x4 ) {
 				// Bed Right
 				flip[i] = neg;
-				mark[i] = &BedLeft;
+				mark[i] = &GLMarker::BedLeft;
 				i++;
 			}
 			if ( entry & 0x8 ) {
 				// Bed Left
 				flip[i] = pos;
-				mark[i] = &BedLeft;
+				mark[i] = &GLMarker::BedLeft;
 				i++;
 			}
 			if ( entry & 0x10 ) {
@@ -1529,7 +1527,7 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 				// This is sometimes used as a real bed position
 				// Other times it is a dummy
 				flip[i] = neg;
-				mark[i] = &BedLeft;
+				mark[i] = &GLMarker::BedLeft;
 				i++;
 			}
 			break;
@@ -1548,37 +1546,37 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 
 		switch ( ref1 ) {
 		case 1:
-			mark[0] = &FurnitureMarker01; // Single Bed
+			mark[0] = &GLMarker::FurnitureMarker01; // Single Bed
 			break;
 
 		case 2:
 			flip[0] = neg;
-			mark[0] = &FurnitureMarker01;
+			mark[0] = &GLMarker::FurnitureMarker01;
 			break;
 
 		case 3:
-			mark[0] = &FurnitureMarker03; // Ground Bed?
+			mark[0] = &GLMarker::FurnitureMarker03; // Ground Bed?
 			break;
 
 		case 4:
-			mark[0] = &FurnitureMarker04; // Ground Bed? Behind
+			mark[0] = &GLMarker::FurnitureMarker04; // Ground Bed? Behind
 			break;
 
 		case 11:
-			mark[0] = &FurnitureMarker11; // Chair Left
+			mark[0] = &GLMarker::FurnitureMarker11; // Chair Left
 			break;
 
 		case 12:
 			flip[0] = neg;
-			mark[0] = &FurnitureMarker11;
+			mark[0] = &GLMarker::FurnitureMarker11;
 			break;
 
 		case 13:
-			mark[0] = &FurnitureMarker13; // Chair Behind
+			mark[0] = &GLMarker::FurnitureMarker13; // Chair Behind
 			break;
 
 		case 14:
-			mark[0] = &FurnitureMarker14; // Chair Front
+			mark[0] = &GLMarker::FurnitureMarker14; // Chair Front
 			break;
 
 		default:
@@ -1594,7 +1592,7 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 
 	if ( scene->selecting ) {
 		GLint id = ( nif->getBlockNumber( iPosition ) & 0xffff ) | ( ( iPosition.row() & 0xffff ) << 16 );
-		getColorKeyFromID( id );
+		scene->setGLColor( getColorKeyFromID( id ) );
 	}
 
 	for ( int n = 0; n < i; n++ ) {
@@ -1604,7 +1602,7 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 		scene->pushAndMultModelViewMatrix( t );
 		scene->multModelViewMatrix( Transform( Vector3(), flip[n] ) );
 
-		drawMarker( mark[n] );
+		mark[n]->drawMarker( scene );
 
 		scene->popModelViewMatrix();
 	}
