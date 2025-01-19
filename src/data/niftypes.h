@@ -2249,53 +2249,8 @@ typedef enum {
 	HAS_TANGENT_BP   = 1 << E_TANGENT_BP,
 } SemanticFlags;
 
-#define SEM(string) {#string, E_##string},
+extern const QMap<QString, Semantic> semanticStrings;
 
-const QMap<QString, Semantic> semanticStrings = {
-	// Vertex semantics
-	SEM( POSITION )
-	SEM( NORMAL )
-	SEM( BINORMAL )
-	SEM( TANGENT )
-	SEM( TEXCOORD )
-	SEM( BLENDWEIGHT )
-	SEM( BLENDINDICES )
-	SEM( COLOR )
-	SEM( PSIZE )
-	SEM( TESSFACTOR )
-	SEM( DEPTH )
-	SEM( FOG )
-	SEM( POSITIONT )
-	SEM( SAMPLE )
-	SEM( DATASTREAM )
-	SEM( INDEX )
-
-	// Skinning semantics
-	SEM( BONEMATRICES )
-	SEM( BONE_PALETTE )
-	SEM( UNUSED0 )
-	SEM( POSITION_BP )
-	SEM( NORMAL_BP )
-	SEM( BINORMAL_BP )
-	SEM( TANGENT_BP )
-
-	// Morph weights semantics
-	SEM( MORPHWEIGHTS )
-
-	// Normal sharing semantics, for use in runtime normal calculation
-	SEM( NORMALSHAREINDEX )
-	SEM( NORMALSHAREGROUP )
-
-	// Instancing Semantics
-	SEM( TRANSFORMS )
-	SEM( INSTANCETRANSFORMS )
-
-	// Display list semantics
-	SEM( DISPLAYLIST )
-};
-#undef SEM
-#undef UN
-
-};
+}	// namespace NiMesh
 
 #endif
