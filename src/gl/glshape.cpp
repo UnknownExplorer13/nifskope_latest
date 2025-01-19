@@ -232,7 +232,7 @@ void Shape::drawVerts( float pointSize, int vertexSelected ) const
 		glDisable( GL_BLEND );
 	} else {
 		pointSize += 0.5f;
-		glNormalColor();
+		setGLColor( scene->wireframeColor );
 		selectionFlags = selectionFlags | ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 );
 		if ( vertexSelected >= 0 )
 			prog->uni4f( "highlightColor", scene->highlightColor );
@@ -270,7 +270,7 @@ void Shape::drawNormals( int btnMask, int vertexSelected, float lineLength ) con
 	prog->uni1i( "btnSelection", ( !( btnMask & 4 ) ? ( !( btnMask & 1 ) ? 1 : 0 ) : 2 ) );
 	prog->uni1f( "normalLineLength", lineLength );
 	prog->uni1f( "lineWidth", GLView::Settings::lineWidthWireframe * 0.78125f );
-	glNormalColor();
+	setGLColor( scene->wireframeColor );
 	if ( vertexSelected >= 0 )
 		prog->uni4f( "highlightColor", scene->highlightColor );
 	prog->uni1i( "selectionParam", vertexSelected );

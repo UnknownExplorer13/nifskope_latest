@@ -190,18 +190,6 @@ void Node::setGLColor( FloatVector4 c ) const
 		prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( c ) );
 }
 
-// Old Options API
-//	TODO: Move away from the GL-like naming
-void Node::glHighlightColor() const
-{
-	setGLColor( scene->highlightColor );
-}
-
-void Node::glNormalColor() const
-{
-	setGLColor( scene->wireframeColor );
-}
-
 
 void Node::clear()
 {
@@ -649,41 +637,51 @@ void Node::drawSelection() const
 	}
 }
 
-void Node::drawVertexSelection( QVector<Vector3> & verts, int i )
+void Node::drawVertexSelection( qsizetype numVerts, int i )
 {
 	glDepthFunc( GL_LEQUAL );
 
 	scene->setGLColor( scene->wireframeColor );
 	scene->setGLPointSize( GLView::Settings::vertexPointSize );
-	scene->drawPoints( verts.constData(), size_t( verts.size() ) );
+	scene->drawPoints( nullptr, size_t( numVerts ) );
 
-	if ( i >= 0 && i < verts.size() ) {
+	if ( i >= 0 && i < numVerts ) {
 		glDepthFunc( GL_ALWAYS );
 		scene->setGLColor( scene->highlightColor );
 		scene->setGLPointSize( GLView::Settings::vertexPointSizeSelected );
-		scene->drawPoints( verts.constData() + i );
+
+		if ( scene->setupProgram( "selection.prog", GL_POINTS ) )
+			scene->renderer->fn->glDrawArrays( GL_POINTS, GLint( i ), 1 );
 	}
 }
 
-void Node::drawTriangleSelection( QVector<Vector3> const & verts, Triangle const & tri )
+void Node::drawTriangleSelection( qsizetype numTriangles, int i )
 {
+	if ( i < 0 || i >= numTriangles )
+		return;
+
 	glDepthFunc( GL_ALWAYS );
 
 	scene->setGLColor( scene->highlightColor );
 	scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
-	qsizetype	v0 = tri[0];
-	qsizetype	v1 = tri[1];
-	qsizetype	v2 = tri[2];
-	if ( std::max( v0, std::max( v1, v2 ) ) < verts.size() ) {
-		Vector3	positions[4] = { verts.at( v0 ), verts.at( v1 ), verts.at( v2 ), verts.at( v0 ) };
-		scene->drawLineStrip( positions, 4 );
-	}
+	if ( scene->setupProgram( "wireframe.prog", GL_TRIANGLES ) )
+		scene->renderer->fn->glDrawElements( GL_TRIANGLES, 3, GL_UNSIGNED_SHORT, (void *) ( qsizetype( i ) * 6 ) );
 }
 
-void Node::drawTriangleIndex( QVector<Vector3> const & verts, Triangle const & tri, int index )
+void Node::drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t, int i )
 {
-	Vector3 c = ( verts.value( tri.v1() ) + verts.value( tri.v2() ) + verts.value( tri.v3() ) ) /  3.0;
-	scene->renderText( c, QString( "%1" ).arg( index ) );
+	Vector3	position;
+	int	n = 0;
+	for ( int i = 0; i < 3; i++ ) {
+		if ( qsizetype( t[i] ) < verts.size() ) {
+			position += verts[t[i]];
+			n++;
+		}
+	}
+	if ( !n )
+		return;
+	position = position / float( n );
+	scene->renderText( position, QString( "%1" ).arg( i ) );
 }
 
 void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
@@ -696,7 +694,7 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 	if ( (!nif || !iShape.isValid() || stack.contains( iShape )) && !extraData )
 		return;
 
-	if ( !scene->isSelModeObject() )
+	if ( !scene->isSelModeObject() || !scene->renderer )
 		return;
 
 	stack.push( iShape );
@@ -705,7 +703,7 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 
 	scene->loadModelViewMatrix( parentTransform );
 
-	if ( name.endsWith( "ListShape" ) ) {
+	if ( name.endsWith( QLatin1StringView("ListShape") ) ) {
 		QModelIndex iShapes = nif->getIndex( iShape, "Sub Shapes" );
 
 		if ( iShapes.isValid() ) {
@@ -823,23 +821,17 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 		}
 
 		QModelIndex iData = nif->getBlockIndex( nif->getLink( iShape, "Data" ) );
+		QModelIndex iVerts, iTriangles;
 
-		if ( iData.isValid() ) {
-			QVector<Vector3> verts = nif->getArray<Vector3>( iData, "Vertices" );
-			QModelIndex iTris = nif->getIndex( iData, "Triangles" );
+		if ( iData.isValid()
+			&& ( iVerts = nif->getIndex( iData, "Vertices" ) ).isValid() && nif->rowCount( iVerts ) >= 2
+			&& ( iTriangles = nif->getIndex( iData, "Triangles" ) ).isValid() && nif->rowCount( iTriangles ) >= 1 ) {
 
-			for ( int t = 0; t < nif->rowCount( iTris ); t++ ) {
-				Triangle tri = nif->get<Triangle>( nif->getIndex( iTris, t ), "Triangle" );
+			QVector<Vector3>	verts = nif->getArray<Vector3>( iVerts );
+			QVector<Triangle>	triangles = nif->getArray<Triangle>( iTriangles );
 
-				if ( tri[0] != tri[1] || tri[1] != tri[2] || tri[2] != tri[0] ) {
-					glBegin( GL_LINE_STRIP );
-					glVertex( verts.value( tri[0] ) );
-					glVertex( verts.value( tri[1] ) );
-					glVertex( verts.value( tri[2] ) );
-					glVertex( verts.value( tri[0] ) );
-					glEnd();
-				}
-			}
+			scene->drawTriangles( verts.constData(), size_t( verts.size() ), nullptr, false, GL_TRIANGLES,
+									size_t( triangles.size() ) * 3, GL_UNSIGNED_SHORT, triangles.constData() );
 
 			// Handle Selection of hkPackedNiTriStripsData
 			if ( scene->currentBlock == iData ) {
@@ -853,28 +845,27 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 				}
 
 				if ( n == "Vertices" || n == "Normals" || n == "Vertex Colors" || n == "UV Sets" ) {
-					drawVertexSelection( verts, i );
-				} else if ( ( n == "Faces" || n == "Triangles" ) ) {
+					drawVertexSelection( verts.size(), i );
+				} else if ( n == "Faces" || n == "Triangles" ) {
 					if ( i == -1 ) {
 						glDepthFunc( GL_ALWAYS );
-						glHighlightColor();
-
-						//for ( int t = 0; t < nif->rowCount( iTris ); t++ )
-						//	DrawTriangleIndex( verts, nif->get<Triangle>( nif->getIndex( iTris, t ), "Triangle" ), t );
+						scene->setGLColor( scene->highlightColor );
+#if 0
+						for ( int t = 0; t < triangles.size(); t++ )
+							drawTriangleIndex( verts, triangles[t], t );
+#endif
 					} else if ( nif->isCompound( nif->itemStrType( scene->currentIndex ) ) ) {
-						Triangle tri = nif->get<Triangle>( nif->getIndex( iTris, i ), "Triangle" );
-						drawTriangleSelection( verts, tri );
-						//DrawTriangleIndex( verts, tri, i );
+						drawTriangleSelection( triangles.size(), i );
+#if 0
+						drawTriangleIndex( verts, triangles[i], i );
+#endif
 					} else if ( nif->itemName( scene->currentIndex ) == "Normal" ) {
 						Triangle tri = nif->get<Triangle>( scene->currentIndex.parent(), "Triangle" );
 						Vector3 triCentre = ( verts.value( tri.v1() ) + verts.value( tri.v2() ) + verts.value( tri.v3() ) ) /  3.0;
-						glLineWidth( GLView::Settings::lineWidthWireframe );
+						scene->setGLColor( scene->highlightColor );
+						scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
 						glDepthFunc( GL_ALWAYS );
-						glHighlightColor();
-						glBegin( GL_LINES );
-						glVertex( triCentre );
-						glVertex( triCentre + nif->get<Vector3>( scene->currentIndex ) );
-						glEnd();
+						scene->drawLine( triCentre, triCentre + nif->get<Vector3>( scene->currentIndex ) );
 					}
 				} else if ( n == "Sub Shapes" ) {
 					int start_vertex = 0;
@@ -892,13 +883,15 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 						start_vertex += totalVerts;
 					}
 
-					for ( int t = 0; t < nif->rowCount( iTris ); t++ ) {
-						Triangle tri = nif->get<Triangle>( nif->getIndex( iTris, t ), "Triangle" );
+					for ( int t = 0; t < triangles.size(); t++ ) {
+						Triangle tri = triangles.at( t );
 
 						if ( (start_vertex <= tri[0]) && (tri[0] < end_vertex) ) {
 							if ( (start_vertex <= tri[1]) && (tri[1] < end_vertex) && (start_vertex <= tri[2]) && (tri[2] < end_vertex) ) {
-								drawTriangleSelection( verts, tri );
-								//DrawTriangleIndex( verts, tri, t );
+								drawTriangleSelection( triangles.size(), t );
+#if 0
+								drawTriangleIndex( verts, tri, t );
+#endif
 							} else {
 								qDebug() << "triangle with multiple materials?" << t;
 							}
@@ -939,13 +932,15 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 					}
 
 					// highlight the triangles of the subshape
-					for ( int t = 0; t < nif->rowCount( iTris ); t++ ) {
-						Triangle tri = nif->get<Triangle>( nif->getIndex( iTris, t ), "Triangle" );
+					for ( int t = 0; t < triangles.size(); t++ ) {
+						Triangle tri = triangles.at( t );
 
 						if ( (start_vertex <= tri[0]) && (tri[0] < end_vertex) ) {
 							if ( (start_vertex <= tri[1]) && (tri[1] < end_vertex) && (start_vertex <= tri[2]) && (tri[2] < end_vertex) ) {
-								drawTriangleSelection( verts, tri );
-								//DrawTriangleIndex( verts, tri, t );
+								drawTriangleSelection( triangles.size(), t );
+#if 0
+								drawTriangleIndex( verts, tri, t );
+#endif
 							} else {
 								qDebug() << "triangle with multiple materials?" << t;
 							}
@@ -1603,22 +1598,15 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 	}
 
 	for ( int n = 0; n < i; n++ ) {
-		glPushMatrix();
-
-		Transform t;
+		Transform t( offs + Vector3( xOffset, yOffset, zOffset ), 1.0f );
 		t.rotation.fromEuler( 0, 0, roll );
-		t.translation = offs;
-		t.translation[0] += xOffset;
-		t.translation[1] += yOffset;
-		t.translation[2] += zOffset;
 
-		glMultMatrix( t );
-
-		glScale( flip[n] );
+		scene->pushAndMultModelViewMatrix( t );
+		scene->multModelViewMatrix( Transform( Vector3(), flip[n] ) );
 
 		drawMarker( mark[n] );
 
-		glPopMatrix();
+		scene->popModelViewMatrix();
 	}
 }
 
