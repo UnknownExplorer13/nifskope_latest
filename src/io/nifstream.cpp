@@ -187,7 +187,7 @@ bool NifIStream::read( NifValue & val )
 			*dataStream >> z;
 			std::uint64_t	xyzw = ( ( std::uint64_t( z ) << 32 ) | xy ) ^ 0x8000800080008000ULL;
 
-			val.val.f32v4 = ( FloatVector4::convertInt16( xyzw ) + 32768.0f ) / 65535.0f;
+			val.val.f32v4 = FloatVector4::convertInt16( xyzw ) + 32768.0f;
 
 			return (dataStream->status() == QDataStream::Ok);
 		}
@@ -613,7 +613,7 @@ bool NifOStream::write( const NifValue & val )
 		}
 	case NifValue::tUshortVector3:
 		{
-			FloatVector4	tmp = val.val.f32v4 * 65535.0f;
+			FloatVector4	tmp = val.val.f32v4;
 			tmp.maxValues( FloatVector4(0.0f) ).minValues( FloatVector4(65535.0f) );
 			std::int32_t	xyz[4];
 			tmp.convertToInt32( xyz );
