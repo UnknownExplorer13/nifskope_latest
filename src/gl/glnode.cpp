@@ -1537,7 +1537,7 @@ void Node::drawFurnitureMarker( const NifModel * nif, const QModelIndex & iPosit
 			break;
 		}
 
-		roll = heading;
+		roll = -heading;
 	} else {
 		if ( ref1 != ref2 ) {
 			qDebug() << "Position Ref 1 and 2 are not equal";
