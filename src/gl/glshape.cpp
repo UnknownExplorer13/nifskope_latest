@@ -100,12 +100,17 @@ void Shape::updateBoneTransforms()
 
 	boundSphere = BoundSphere();
 
+	Transform	wtInv = worldTrans();
+	wtInv.rotation = wtInv.rotation.inverted();
+	wtInv.scale = 1.0f / wtInv.scale;
+	wtInv.translation = ( wtInv.rotation * wtInv.translation ) * wtInv.scale * -1.0f;
+
 	for ( qsizetype i = 0; i < numBones; i++ ) {
 		const BoneData &	bw = boneData.at( i );
+		Transform	t;
 		Node * bone = root ? root->findChild( bw.bone ) : nullptr;
-		Transform	t = skeletonTrans;
 		if ( bone )
-			t = t * bone->localTrans( skeletonRoot );
+			t = wtInv * bone->worldTrans();
 		boundSphere |= BoundSphere( t * bw.center, t.scale * bw.radius );
 		t = t * bw.trans;
 
@@ -399,20 +404,16 @@ void Shape::updateImpl( const NifModel * nif, const QModelIndex & index )
 void Shape::boneSphere( const NifModel * nif, const QModelIndex & index ) const
 {
 	Node * root = findParent( 0 );
-	Node * bone = root ? root->findChild( bones.value( index.row() ) ) : 0;
+	Node * bone = root ? root->findChild( bones.value( index.row() ) ) : nullptr;
 	if ( !bone )
 		return;
 
-	Transform boneT = Transform( nif, index );
-	Transform t = bone->localTrans( 0 ) * boneT;
-
 	auto bSphere = BoundSphere( nif, index );
 	if ( bSphere.radius > 0.0 ) {
-		auto pos = boneT.rotation.inverted() * (bSphere.center - boneT.translation);
 		scene->setGLColor( 1.0f, 1.0f, 1.0f, 0.33f );
 		scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );
-		scene->loadModelViewMatrix( viewTrans().toMatrix4() * skeletonTrans * t );
-		scene->drawSphereSimple( pos, bSphere.radius, 36 );
+		scene->loadModelViewMatrix( scene->view.toMatrix4() * bone->worldTrans() );
+		scene->drawSphereSimple( bSphere.center, bSphere.radius, 36 );
 	}
 }
 
