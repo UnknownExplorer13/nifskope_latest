@@ -1048,8 +1048,12 @@ void GLView::flipOrientation()
 	case ViewUser:
 	default:
 		view = tmp;
+		if ( Node * node = scene->getNode( model, scene->currentBlock ); node )
+			Pos = node->bounds().center * -2.0f - Pos;
+		else
+			Pos = scene->bounds().center * -2.0f - Pos;
 		Rot[0] = ( Rot[0] < 0.0f ? -180.0f : 180.0f ) - Rot[0];
-		Rot[1] = Rot[1] * -1.0f;
+		Rot[1] *= -1.0f;
 		Rot[2] = ( Rot[2] < 0.0f ? 180.0f : -180.0f ) + Rot[2];
 		update();
 		return;
