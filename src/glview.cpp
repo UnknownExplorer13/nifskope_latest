@@ -948,7 +948,9 @@ void GLView::move( float x, float y, float z )
 
 void GLView::rotate( float x, float y, float z )
 {
-	Rot += Vector3( x, y, z );
+	FloatVector4	tmp( x, y, z, 0.0f );
+	tmp += FloatVector4::convertVector3( &(Rot[0]) );
+	( tmp - ( tmp / 360.0f ).roundValues() * 360.0f ).convertToVector3( &(Rot[0]) );	// wrap to -180.0 to 180.0
 	updateViewpoint();
 	update();
 }
@@ -1045,10 +1047,12 @@ void GLView::flipOrientation()
 		break;
 	case ViewUser:
 	default:
-	{
-		// TODO: Flip any other view also?
-	}
-		break;
+		view = tmp;
+		Rot[0] = ( Rot[0] < 0.0f ? -180.0f : 180.0f ) - Rot[0];
+		Rot[1] = Rot[1] * -1.0f;
+		Rot[2] = ( Rot[2] < 0.0f ? 180.0f : -180.0f ) + Rot[2];
+		update();
+		return;
 	}
 
 	setOrientation( tmp, false );
