@@ -446,9 +446,7 @@ public:
 	 */
 	void removeChild( int row )
 	{
-		NifItem * item = unregisterChild( row );
-		if ( item )
-			delete item;
+		delete unregisterChild( row );
 	}
 
 	/*! Remove several child items

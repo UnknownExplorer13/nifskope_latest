@@ -113,13 +113,18 @@ void NifItem::registerChild( NifItem * item, int at )
 
 NifItem * NifItem::unregisterChild( int at )
 {
-	if ( at >= 0 && at < childItemsSize ) {
-		NifItem * item = childItems[at];
-		removeChildren( at, 1 );
-		return item;
-	}
+	if ( !( at >= 0 && at < childItemsSize ) ) [[unlikely]]
+		return nullptr;
 
-	return nullptr;
+	NifItem * item = childItems[at];
+
+	int n = childItemsSize - ( at + 1 );
+	if ( n > 0 )
+		std::memmove( childItems + at, childItems + ( at + 1 ), size_t( n ) * sizeof( NifItem * ) );
+	childItemsSize = at + n;
+	updateChildRows( at );
+
+	return item;
 }
 
 void NifItem::removeChildren( int row, int count )
