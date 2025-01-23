@@ -182,6 +182,8 @@ signals:
 	void sequencesDisabled( bool );
 
 protected:
+	inline QOpenGLContext * pushGLContext();
+	inline void popGLContext( QOpenGLContext * prvContext );
 	//! Sets up the OpenGL rendering context, defines display lists, etc.
 	void initializeGL() override final;
 	//! Sets up the OpenGL viewport, projection, etc.

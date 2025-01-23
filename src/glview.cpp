@@ -333,6 +333,22 @@ void GLView::updateAnimationState( bool checked )
  *  OpenGL
  */
 
+inline QOpenGLContext * GLView::pushGLContext()
+{
+	QOpenGLContext *	prvContext = QOpenGLContext::currentContext();
+	if ( context() != prvContext )
+		makeCurrent();
+	return prvContext;
+}
+
+inline void GLView::popGLContext( QOpenGLContext * prvContext )
+{
+	if ( !prvContext )
+		doneCurrent();
+	else if ( prvContext != context() )
+		prvContext->makeCurrent( prvContext->surface() );
+}
+
 void GLView::initializeGL()
 {
 	glContext = context();
@@ -362,10 +378,11 @@ void GLView::initializeGL()
 
 void GLView::updateShaders()
 {
-	makeCurrent();
 	if ( !isValid() )
 		return;
+	auto	prvContext = pushGLContext();
 	scene->updateShaders();
+	popGLContext( prvContext );
 	update();
 }
 
@@ -462,22 +479,21 @@ void GLView::paintGL()
 	NifSkopeOpenGLContext *	cx = scene->renderer;
 
 	// Transform the scene
-	static const float	axisRotation[27] = {
-		1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,		// Z
-		0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f,  0.0f, 1.0f, 0.0f,		// Y
-		0.0f, 1.0f, 0.0f,  0.0f, 0.0f, 1.0f,  1.0f, 0.0f, 0.0f		// X
-	};
-	const float *	ap = axisRotation;
-
-	if ( cfg.upAxis == YAxis )
-		ap = ap + 9;
-	else if ( cfg.upAxis == XAxis )
-		ap = ap + 18;
-
 	Transform	viewTrans;
 	viewTrans.rotation.fromEuler( deg2rad(Rot[0]), deg2rad(Rot[1]), deg2rad(Rot[2]) );
 	viewTrans.translation = viewTrans.rotation * Pos;
-	viewTrans.rotation = viewTrans.rotation * Matrix( ap );
+	if ( cfg.upAxis != ZAxis ) {
+		float *	r = &( viewTrans.rotation( 0, 0 ) );
+		if ( cfg.upAxis == XAxis ) {			// YZX -> XYZ
+			FloatVector4::convertVector3( r ).shuffleValues( 0xD2 ).convertToVector3( r );
+			FloatVector4::convertVector3( r + 3 ).shuffleValues( 0xD2 ).convertToVector3( r + 3 );
+			FloatVector4::convertVector3( r + 6 ).shuffleValues( 0xD2 ).convertToVector3( r + 6 );
+		} else if ( cfg.upAxis == YAxis ) {		// ZXY -> XYZ
+			FloatVector4::convertVector3( r ).shuffleValues( 0xC9 ).convertToVector3( r );
+			FloatVector4::convertVector3( r + 3 ).shuffleValues( 0xC9 ).convertToVector3( r + 3 );
+			FloatVector4::convertVector3( r + 6 ).shuffleValues( 0xC9 ).convertToVector3( r + 6 );
+		}
+	}
 
 	if ( view != ViewWalk )
 		viewTrans.translation[2] -= Dist * 2;
@@ -676,9 +692,10 @@ void GLView::resizeGL( int width, int height )
 	pixelWidth = width;
 	pixelHeight = height;
 
-	makeCurrent();
 	if ( !isValid() )
 		return;
+	auto	prvContext = pushGLContext();
+
 	aspect = GLdouble(width) / GLdouble(height);
 	if ( !scene->renderer ) [[unlikely]]
 		glViewport( 0, 0, width, height );
@@ -687,6 +704,8 @@ void GLView::resizeGL( int width, int height )
 
 	glDisable(GL_FRAMEBUFFER_SRGB);
 	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+
+	popGLContext( prvContext );
 }
 
 void GLView::resizeEvent( QResizeEvent * e )
@@ -784,9 +803,8 @@ void GLView::setVisMode( Scene::VisMode mode, bool checked )
 
 typedef void (Scene::* DrawFunc)( void );
 
-int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, int cycle, const QPointF & pos, int & furn )
+static int indexAt( NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, const QPointF & pos, int & furn )
 {
-	Q_UNUSED( model ); Q_UNUSED( cycle );
 	// Color Key O(1) selection
 	//	Open GL 3.0 says glRenderMode is deprecated
 	//	ATI OpenGL API implementation of GL_SELECT corrupts NifSkope memory
@@ -796,8 +814,6 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	// The FBO can be used for the drawing operations to keep the drawing operations invisible to the user.
 
 	auto	context = scene->renderer;
-	if ( !context )
-		return -1;
 	std::int32_t	viewport[4];
 	context->getViewport().convertToInt32( viewport );
 
@@ -880,22 +896,10 @@ int indexAt( /*GLuint *buffer,*/ NifModel * model, Scene * scene, QList<DrawFunc
 	return choose;
 }
 
-QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
+QModelIndex GLView::indexAt( const QPointF & pos, [[maybe_unused]] int cycle )
 {
-	if ( !(model && isVisible() && height() && scene->renderer) )
+	if ( !(model && isValid() && isVisible() && height() && scene->renderer) )
 		return QModelIndex();
-
-	makeCurrent();
-	if ( !isValid() )
-		return {};
-
-	double	p = devicePixelRatioF();
-	int	wp = pixelWidth;
-	int	hp = pixelHeight;
-	QPointF	posScaled( pos );
-	posScaled *= p;
-	scene->renderer->setViewport( 0, 0, wp, hp );
-	glProjection( int( posScaled.x() + 0.5 ), int( posScaled.y() + 0.5 ) );
 
 	QList<DrawFunc> df;
 
@@ -910,8 +914,20 @@ QModelIndex GLView::indexAt( const QPointF & pos, int cycle )
 
 	df << &Scene::drawShapes;
 
+	auto	prvContext = pushGLContext();
+
+	double	p = devicePixelRatioF();
+	int	wp = pixelWidth;
+	int	hp = pixelHeight;
+	QPointF	posScaled( pos );
+	posScaled *= p;
+	scene->renderer->setViewport( 0, 0, wp, hp );
+	glProjection( int( posScaled.x() + 0.5 ), int( posScaled.y() + 0.5 ) );
+
 	int choose = -1, furn = -1;
-	choose = ::indexAt( model, scene, df, cycle, posScaled, /*out*/ furn );
+	choose = ::indexAt( model, scene, df, posScaled, /*out*/ furn );
+
+	popGLContext( prvContext );
 
 	QModelIndex chooseIndex;
 
@@ -1522,6 +1538,8 @@ void GLView::saveImage()
 			// Supersampling
 			int	ss = grpSize->checkedId();
 
+			auto	prvContext = pushGLContext();
+
 			// Resize viewport for supersampling
 			if ( ss > 1 )
 				resizeGL( int( p * ( w * ss ) + 0.5 ), int( p * ( h * ss ) + 0.5 ) );
@@ -1571,6 +1589,8 @@ void GLView::saveImage()
 			glClearColor( c.redF(), c.greenF(), c.blueF(), c.alphaF() );
 			if ( ss > 1 )
 				resizeGL( int( p * w + 0.5 ), int( p * h + 0.5 ) );
+
+			popGLContext( prvContext );
 
 			if ( !err.empty() ) {
 				QMessageBox::critical( nullptr, "NifSkope error", QString::fromStdString( err ) );
