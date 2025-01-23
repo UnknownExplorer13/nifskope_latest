@@ -70,6 +70,7 @@ public:
 	void drawWireframe( FloatVector4 color ) const;
 	// i = first triangle, n = number of triangles to draw
 	void drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const;
+	void drawWeights( int vertexSelected ) const;
 	void drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const;
 	void drawBoundingBox( const Vector3 & boundsCenter, const Vector3 & boundsDims, FloatVector4 color ) const;
 	void setUniforms( NifSkopeOpenGLContext::Program * prog ) const;

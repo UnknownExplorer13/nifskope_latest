@@ -339,6 +339,40 @@ void Shape::drawTriangles( qsizetype i, qsizetype n, FloatVector4 color ) const
 	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( n * 3 ), GL_UNSIGNED_SHORT, (void *) ( i * 6 ) );
 }
 
+void Shape::drawWeights( int vertexSelected ) const
+{
+	auto	context = scene->renderer;
+	if ( !context || scene->selecting )
+		return;
+	auto	prog = context->useProgram( "selection.prog" );
+	if ( !prog )
+		return;
+
+	setUniforms( prog );
+	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ) );
+	prog->uni1i( "selectionFlags", 0x08 );
+	prog->uni1i( "selectionParam", -1 );
+
+	context->fn->glDrawElements( GL_TRIANGLES, GLsizei( triangles.size() * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
+
+	if ( vertexSelected >= 0 && vertexSelected < verts.size() ) {
+		glEnable( GL_POLYGON_OFFSET_POINT );
+		glPolygonOffset( 0.0f, -100.0f );
+
+		float	pointSize = GLView::Settings::vertexPointSizeSelected + 0.5f;
+		glPointSize( pointSize );
+		int	selectionFlags = ( roundFloat( std::min( std::max( pointSize * 8.0f, 0.0f ), 255.0f ) ) << 8 ) | 0x0002;
+		prog->uni4f( "highlightColor", scene->highlightColor );
+		prog->uni1i( "selectionFlags", selectionFlags );
+		prog->uni1i( "selectionParam", vertexSelected );
+		context->fn->glDrawArrays( GL_POINTS, GLint( vertexSelected ), 1 );
+
+		glDisable( GL_POLYGON_OFFSET_POINT );
+	}
+
+	prog->uni1i( "selectionFlags", 0 );
+}
+
 void Shape::drawBoundingSphere( const BoundSphere & sph, FloatVector4 color ) const
 {
 	scene->setGLColor( color );

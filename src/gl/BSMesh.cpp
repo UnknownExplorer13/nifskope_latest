@@ -88,8 +88,10 @@ void BSMesh::drawSelection() const
 		if ( scene->hasOption(Scene::ShowNodes) )
 			Node::drawSelection();
 
-		if ( !( scene->isSelModeObject() && scene->currentBlock == iBlock ) )
+		if ( !( scene->isSelModeObject() && scene->currentBlock.isValid()
+				&& ( scene->currentBlock == iBlock || scene->currentBlock == iSkinData ) ) ) {
 			return;
+		}
 	}
 
 	auto &	idx = scene->currentIndex;
@@ -141,14 +143,18 @@ void BSMesh::drawSelection() const
 			Shape::drawBoundingBox( boundsCenter, boundsDims, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
 	} else if ( n == "Vertices" || n == "UVs" || n == "UVs 2" || n == "Vertex Colors" || n == "Weights" ) {
 		int	s = -1;
-		if ( n == p && ( s = idx.row() ) >= 0 ) {
-			if ( n == "Weights" ) {
+		if ( n == p )
+			s = idx.row();
+		if ( n == "Weights" ) {
+			if ( s >= 0 ) {
 				int	weightsPerVertex = int( nif->get<quint32>(idx.parent().parent(), "Weights Per Vertex") );
 				if ( weightsPerVertex > 1 )
 					s /= weightsPerVertex;
 			}
+			Shape::drawWeights( s );
+		} else {
+			Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 		}
-		Shape::drawVerts( GLView::Settings::vertexPointSize, s );
 	} else if ( n == "Normals" || n == "Tangents" ) {
 		int	btnMask = ( n == "Normals" ? 0x04 : 0x03 );
 		int	s = -1;
@@ -166,24 +172,32 @@ void BSMesh::drawSelection() const
 				int	numBones;
 				if ( iBones.isValid() && nif->isArray( iBones ) && ( numBones = nif->rowCount( iBones ) ) > 0 ) {
 					for ( int i = 0; i < numBones; i++ ) {
-						auto	iBone = nif->getIndex( iBones, i );
-						if ( !iBone.isValid() )
-							continue;
-						BoundSphere	sph( nif, iBone );
-						if ( !( sph.radius > 0.0f ) )
-							continue;
-						Transform	t( nif, iBone );
-						sph.center -= t.translation;
-						t.rotation = t.rotation.inverted();
-						t.translation = Vector3( 0.0f, 0.0f, 0.0f );
-						t.scale = 1.0f / t.scale;
-						sph.radius *= t.scale;
-						sph.center = t * sph.center;
-						drawBoundingSphere( sph, FloatVector4( 1.0f, 1.0f, 1.0f, 0.33f ) );
-						bindShape();
+						if ( auto iBone = nif->getIndex( iBones, i ); iBone.isValid() )
+							boneSphere( nif, iBone );
 					}
 				}
 			}
+		}
+	} else if ( n == "BSSkin::BoneData" ) {
+		// Draw all bones' bounding spheres
+
+		// Get shape block
+		if ( nif->getBlockIndex( nif->getParent( nif->getParent( scene->currentBlock ) ) ) == iBlock ) {
+			auto iBones = nif->getIndex( scene->currentBlock, "Bone List" );
+			int ct = nif->rowCount( iBones );
+
+			for ( int i = 0; i < ct; i++ ) {
+				auto b = nif->getIndex( iBones, i );
+				boneSphere( nif, b );
+			}
+		}
+	} else if ( n == "Bone List" ) {
+		// Draw bone bounding sphere
+		if ( nif->isArray( idx ) ) {
+			for ( int i = 0; i < nif->rowCount( idx ); i++ )
+				boneSphere( nif, nif->getIndex( idx, i ) );
+		} else {
+			boneSphere( nif, idx );
 		}
 	} else {
 		int	s = -1;
@@ -432,7 +446,7 @@ void BSMesh::updateData(const NifModel* nif)
 		boneWeights0.clear();
 		boneWeights1.clear();
 		numWeights = int( mesh->weights.size() );
-		if ( numWeights >= verts.size() )
+		if ( numWeights > 0 )
 			weights = mesh->weights.constData();
 		gpuLODs = mesh->lods;
 
@@ -451,10 +465,10 @@ void BSMesh::updateData(const NifModel* nif)
 			qsizetype numBones = nif->get<int>(iSkinData, "Num Bones");
 			boneData.fill( BoneData(), numBones );
 
-			auto iBones = nif->getLinkArray(iSkin, "Bones");
+			bones = nif->getLinkArray(iSkin, "Bones");
 			qsizetype validBones = 0;
-			for ( qsizetype i = 0; i < iBones.size(); i++ ) {
-				auto b = iBones.at( i );
+			for ( qsizetype i = 0; i < bones.size(); i++ ) {
+				auto b = bones.at( i );
 				if ( i < numBones )
 					boneData[i].bone = b;
 				if ( b == -1 )
@@ -470,9 +484,9 @@ void BSMesh::updateData(const NifModel* nif)
 				boneData[i].setTransform( nif, nif->getIndex( iBoneList, i ) );
 
 			if ( weights && isSkinned ) {
-				size_t	numVerts = size_t( verts.size() );
-				boneWeights0.assign( numVerts, FloatVector4( 0.0f ) );
-				for ( size_t i = 0; i < numVerts; i++ ) {
+				size_t	n = size_t( numWeights );
+				boneWeights0.assign( n, FloatVector4( 0.0f ) );
+				for ( size_t i = 0; i < n; i++ ) {
 					size_t	k = 0;
 					for ( const auto & bw : weights[i].weightsUNORM ) {
 						unsigned int	b = bw.bone;
@@ -482,8 +496,8 @@ void BSMesh::updateData(const NifModel* nif)
 							if ( k < 4 ) {
 								boneWeights0[i][k] = w;
 							} else if ( k < 8 ) {
-								if ( boneWeights1.size() < numVerts ) [[unlikely]]
-									boneWeights1.assign( numVerts, FloatVector4( 0.0f ) );
+								if ( boneWeights1.size() < n ) [[unlikely]]
+									boneWeights1.assign( n, FloatVector4( 0.0f ) );
 								boneWeights1[i][k & 3] = w;
 							}
 							k++;

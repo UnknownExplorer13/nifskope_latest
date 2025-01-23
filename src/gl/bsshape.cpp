@@ -564,6 +564,10 @@ void BSShape::drawSelection() const
 			}
 		}
 
+	} else if ( n == "Bone Weights" ) {
+		// Draw bone weights
+		Shape::drawWeights( scene->currentIndex.parent().row() );
+
 	} else if ( n == "NiSkinData" || n == "BSSkin::BoneData" ) {
 		// Draw all bones' bounding spheres
 
