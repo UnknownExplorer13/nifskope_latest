@@ -3,9 +3,7 @@
 layout ( triangles ) in;
 layout ( triangle_strip, max_vertices = 12 ) out;
 
-uniform mat4 projectionMatrix;
-uniform vec4 lightSourcePosition[3];	// W0 = environment map rotation (-1.0 to 1.0), W1, W2 = viewport X, Y
-uniform vec4 lightSourceDiffuse[3];		// A0 = overall brightness, A1, A2 = viewport width, height
+#include "uniforms.glsl"
 
 uniform float lineWidth;
 
@@ -28,8 +26,8 @@ void drawLine( vec4 p0, vec4 p1, vec4 p1Color )
 	vec3	p0_ndc = p0.xyz / p0.w;
 	vec3	p1_ndc = p1.xyz / p1.w;
 
-	vec2	vpScale = vec2( lightSourceDiffuse[1].a, lightSourceDiffuse[2].a ) * 0.5;
-	vec2	vpOffs = vec2( lightSourcePosition[1].w, lightSourcePosition[2].w ) + vpScale;
+	vec2	vpScale = vec2( viewportDimensions.zw ) * 0.5;
+	vec2	vpOffs = vec2( viewportDimensions.xy ) + vpScale;
 
 	vec2	p0_ss = p0_ndc.xy * vpScale;
 	vec2	p1_ss = p1_ndc.xy * vpScale;

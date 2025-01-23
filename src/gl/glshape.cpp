@@ -441,7 +441,6 @@ void Shape::resetVertexData()
 void Shape::resetSkeletonData()
 {
 	skeletonRoot = 0;
-	skeletonTrans = Transform();
 
 	boneTransforms.clear();
 	boneWeights0.clear();
@@ -497,28 +496,10 @@ void Shape::setUniforms( NifSkopeOpenGLContext::Program * prog ) const
 	if ( !prog ) [[unlikely]]
 		return;
 
-	unsigned int	nifVersion = 0;
-	if ( scene->nifModel ) [[likely]]
-		nifVersion = scene->nifModel->getBSVersion();
-
-	size_t	numBones = 0;
-	if ( nifVersion < 170 ) {
-		// TODO: Starfield skinning is not implemented
-		if ( !transformRigid )
-			numBones = std::min< size_t >( boneTransforms.size() / 3, size_t( prog->maxNumBones ) );
-		prog->uni1i( "numBones", int( numBones ) );
-	}
-
-	if ( numBones > 0 ) {
-		if ( int l = prog->uniLocation( "boneTransforms" ); l >= 0 )
-			prog->f->glUniformMatrix3x4fv( l, GLsizei( numBones ), GL_FALSE, &( boneTransforms.front()[0] ) );
-	}
+	if ( !transformRigid && !boneTransforms.empty() )
+		scene->renderer->updateBoneTransforms( boneTransforms.data(), boneTransforms.size() / 3 );
 
 	const Transform &	v = viewTrans();
-	bool	modelSpaceNormals = false;
-	if ( nifVersion < 130 && prog->name == "sk_msn.prog" ) [[unlikely]]
-		modelSpaceNormals = true;
-	prog->uni3m( "viewMatrix", ( !modelSpaceNormals ? scene->view.rotation : v.rotation ) );
 	prog->uni3m( "normalMatrix", v.rotation );
 	prog->uni4m( "modelViewMatrix", v.toMatrix4() );
 }

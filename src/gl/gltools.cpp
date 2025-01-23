@@ -457,7 +457,6 @@ void Scene::drawPoints( const Vector3 * positions, size_t numVerts )
 	NifSkopeOpenGLContext *	context = renderer;
 	prog->uni4f( "vertexColorOverride", FloatVector4( 1.0e-15f ).maxValues( currentGLColor ) );
 	prog->uni1i( "selectionParam", -1 );
-	prog->uni1i( "numBones", 0 );
 
 	float	pointSize = currentGLPointSize;
 	if ( selecting ) {
@@ -560,7 +559,6 @@ void Scene::drawTriangles( const Vector3 * positions, size_t numVerts, const Flo
 	}
 	prog->uni4m( "modelViewMatrix", *currentModelViewMatrix );
 	prog->uni1i( "selectionParam", -1 );
-	prog->uni1i( "numBones", 0 );
 
 	if ( selecting ) {
 		glDisable( GL_BLEND );
@@ -1566,7 +1564,6 @@ NifSkopeOpenGLContext::Program * Scene::setupProgram( std::string_view name, uns
 		prog->uni1f( "lineWidth", currentGLLineWidth );
 	} else {
 		prog->uni1i( "selectionParam", -1 );
-		prog->uni1i( "numBones", 0 );
 		if ( elementMode == GL_POINTS ) {
 			float	pointSize = currentGLPointSize;
 			if ( selecting ) {

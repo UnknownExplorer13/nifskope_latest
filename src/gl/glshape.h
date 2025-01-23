@@ -139,7 +139,6 @@ protected:
 	std::vector<FloatVector4> boneWeights1;
 
 	int skeletonRoot = 0;
-	Transform skeletonTrans;
 	QVector<int> bones;
 	QVector<BoneData> boneData;
 	QVector<SkinPartition> partitions;

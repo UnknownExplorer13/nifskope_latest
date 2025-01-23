@@ -227,7 +227,7 @@ void UVWidget::initializeGL()
 {
 	cx = new NifSkopeOpenGLContext( context() );
 	textures->setOpenGLContext( cx );
-	cx->updateShaders( 1 );
+	cx->updateShaders();
 
 	glEnable( GL_MULTISAMPLE );
 
@@ -462,7 +462,7 @@ void UVWidget::updateViewRect( int width, int height )
 	double	offsY = pos[1] + 0.5 - scaleY * 0.5;
 	viewScaleAndOffset = FloatVector4( float( scaleX ), float( scaleY ), float( offsX ), float( offsY ) );
 
-	cx->projectionMatrix = Matrix4();
+	cx->setProjectionMatrix( Matrix4() );
 	cx->setGlobalUniforms();
 
 	cx->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
@@ -482,12 +482,10 @@ void UVWidget::updateViewRect( int width, int height )
 	}
 	if ( auto prog = cx->useProgram( "selection.prog" ); prog ) {
 		prog->uni4m( "modelViewMatrix", modelViewMatrix );
-		prog->uni1i( "numBones", 0 );
 	}
 	if ( auto prog = cx->useProgram( "wireframe.prog" ); prog ) {
 		prog->uni3m( "normalMatrix", Matrix() );
 		prog->uni4m( "modelViewMatrix", modelViewMatrix );
-		prog->uni1i( "numBones", 0 );
 	}
 }
 

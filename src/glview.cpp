@@ -398,12 +398,12 @@ void GLView::glProjection( [[maybe_unused]] int x, [[maybe_unused]] int y )
 
 		GLdouble h2 = std::tan( ( cfg.fov / Zoom ) / 360 * M_PI ) * nr;
 		GLdouble w2 = h2 * aspect;
-		scene->renderer->projectionMatrix = Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr );
+		scene->renderer->setProjectionMatrix( Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr ) );
 	} else {
 		// Orthographic View
 		GLdouble h2 = Dist / Zoom;
 		GLdouble w2 = h2 * aspect;
-		scene->renderer->projectionMatrix = Matrix4::fromOrtho( -w2, +w2, -h2, +h2, nr, fr );
+		scene->renderer->setProjectionMatrix( Matrix4::fromOrtho( -w2, +w2, -h2, +h2, nr, fr ) );
 	}
 }
 
@@ -487,13 +487,16 @@ void GLView::paintGL()
 	// Setup projection mode
 	glProjection();
 
-	FloatVector4	mat_amb( 0.0f, 0.0f, 0.0f, 1.0f );
-	FloatVector4	mat_diff( 0.0f, 0.0f, 0.0f, 1.0f );
+	cx->globalUniforms->lightingControls = FloatVector4( toneMapping, brightnessScale, 1.0f, 0.0f );
+	if ( !scene->hasOption(Scene::DoGlow) )
+		cx->globalUniforms->lightingControls[2] = 0.0f;
+	FloatVector4	mat_amb( 0.0f );
+	FloatVector4	mat_diff( 0.0f );
 	Vector3	lightDir( 0.0f, 0.0f, 1.0f );
 	bool	drawLightPos = false;
 
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
-		mat_diff[3] = 0.0f;
+		cx->globalUniforms->lightingControls.blendValues( FloatVector4( 0.0f ), 0x06 );
 
 	} else if ( scene->hasOption(Scene::DoLighting) ) {
 		// Setup light
@@ -503,12 +506,11 @@ void GLView::paintGL()
 			Matrix m;
 			m.fromEuler( 0, 0, deg2rad( planarAngle ) );
 			lightDir = m * Vector3( std::sin( decl ), 0.0f, std::cos( decl ) );
-			cx->lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
+			cx->globalUniforms->lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
 
 			drawLightPos = scene->hasVisMode( Scene::VisLightPos );
 		} else {
-			// environment map rotation around the Z axis
-			cx->lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, planarAngle / 180.0f );
+			cx->globalUniforms->lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f );
 		}
 
 		mat_amb = FloatVector4( ambient );
@@ -529,17 +531,19 @@ void GLView::paintGL()
 		c.maxValues( FloatVector4(0.0f) ).minValues( FloatVector4(1.0f) );
 		c *= brightnessL;
 		mat_diff = c;
-		mat_diff[3] = brightnessScale;
 
 	} else {
-		mat_amb.blendValues( FloatVector4( 0.5f ), 0x07 );
+		mat_amb = FloatVector4( 0.5f );
 		mat_diff = FloatVector4( 1.0f );
+		cx->globalUniforms->lightingControls.blendValues( FloatVector4( 1.0f ), 0x03 );
 	}
 
-	cx->viewMatrix = scene->view.rotation;
-	cx->lightSourceAmbient = mat_amb;
-	cx->lightSourceDiffuse[0] = mat_diff;
-
+	// in frontal light mode, planar angle controls environment map rotation around the Z axis
+	cx->setViewTransform( scene->view, int( cfg.upAxis ), ( frontalLight ? planarAngle : 0.0f ) );
+	cx->globalUniforms->lightSourceAmbient = mat_amb;
+	cx->globalUniforms->lightSourceDiffuse[0] = mat_diff;
+	cx->globalUniforms->renderOptions1[0] = std::int32_t( scene->hasOption(Scene::DoSkinning) );
+	cx->globalUniforms->renderOptions1[1] = std::int32_t( scene->options );
 	cx->setGlobalUniforms();
 
 	cx->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
@@ -607,12 +611,11 @@ void GLView::paintGL()
 		// Square frustum
 		auto nr = 1.0;
 		auto fr = 250.0;
-		GLdouble h2 = tan( cfg.fov / 360 * M_PI ) * nr;
+		GLdouble h2 = std::tan( cfg.fov / 360 * M_PI ) * nr;
 		GLdouble w2 = h2;
 		if ( auto prog = scene->useProgram( "lines.prog" ); prog ) {
-			prog->uni4m( "projectionMatrix", Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr ) );
-			// update viewport dimensions
-			prog->uni4fv( "lightSourceDiffuse", cx->lightSourceDiffuse, 3 );
+			cx->setProjectionMatrix( Matrix4::fromFrustum( -w2, +w2, -h2, +h2, nr, fr ) );
+			cx->setGlobalUniforms();
 		}
 
 		// Zoom out slightly

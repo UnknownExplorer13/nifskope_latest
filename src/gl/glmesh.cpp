@@ -69,11 +69,9 @@ void Mesh::updateImpl( const NifModel * nif, const QModelIndex & index )
 
 void Mesh::addBoneWeight( int vertexNum, int boneNum, float weight )
 {
-	size_t	numVerts = size_t( verts.size() );
-	if ( !( (unsigned int) vertexNum < numVerts && ( boneNum & ~255 ) == 0 && weight > 0.0f ) )
-		return;
 	FloatVector4 *	w = boneWeights0.data() + vertexNum;
 	if ( (*w)[3] > 0.0f ) [[unlikely]] {
+		size_t	numVerts = size_t( verts.size() );
 		if ( boneWeights1.size() < numVerts ) [[unlikely]]
 			boneWeights1.assign( numVerts, FloatVector4( 0.0f ) );
 		w = boneWeights1.data() + vertexNum;
@@ -108,7 +106,6 @@ void Mesh::updateData( const NifModel * nif )
 		boneWeights0.assign( size_t( numVerts ), FloatVector4( 0.0f ) );
 
 		skeletonRoot = nif->getLink( iSkin, "Skeleton Root" );
-		skeletonTrans = Transform( nif, iSkinData );
 
 		bones = nif->getLinkArray( iSkin, "Bones" );
 
@@ -126,7 +123,10 @@ void Mesh::updateData( const NifModel * nif )
 					if ( idxWeights.isValid() ) {
 						for ( int c = 0; c < nif->rowCount( idxWeights ); c++ ) {
 							QModelIndex idx = nif->getIndex( idxWeights, c );
-							addBoneWeight( nif->get<int>( idx, "Index" ), b, nif->get<float>( idx, "Weight" ) );
+							int i = nif->get<int>( idx, "Index" );
+							float w = nif->get<float>( idx, "Weight" );
+							if ( (unsigned int) i < (unsigned int) numVerts && b < 256 && w > 0.00001f )
+								addBoneWeight( i, b, w );
 						}
 					}
 				}
@@ -136,6 +136,7 @@ void Mesh::updateData( const NifModel * nif )
 		if ( iSkinPart.isValid() ) {
 			QModelIndex idx = nif->getIndex( iSkinPart, "Partitions" );
 
+			qsizetype	numBones = std::min< qsizetype >( bones.size(), 256 );
 			uint numTris = 0;
 			uint numStrips = 0;
 			for ( int i = 0; i < nif->rowCount( idx ) && idx.isValid(); i++ ) {
@@ -151,7 +152,9 @@ void Mesh::updateData( const NifModel * nif )
 
 					for ( int w = 0; w < part.numWeightsPerVertex; w++ ) {
 						auto	weight = part.weights[v * part.numWeightsPerVertex + w];
-						addBoneWeight( vindex, part.boneMap.value( weight.first ), weight.second );
+						auto	b = part.boneMap.value( weight.first );
+						if ( (unsigned int) b < (unsigned int) numBones && weight.second > 0.00001f )
+							addBoneWeight( vindex, b, weight.second );
 					}
 				}
 			}
