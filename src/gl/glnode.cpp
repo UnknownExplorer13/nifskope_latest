@@ -714,21 +714,17 @@ void Node::drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t
 void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
 							Scene * scene, FloatVector4 origin_color4fv, const Matrix4 & parentTransform )
 {
-	QString name = (nif) ? nif->itemName( iShape ) : "";
+	if ( !nif || !iShape.isValid() )
+		return;
+
+	QString name = nif->itemName( iShape );
 
 	bool extraData = (name == "hkPackedNiTriStripsData");
 
-	if ( (!nif || !iShape.isValid() || stack.contains( iShape )) && !extraData )
+	if ( ( stack.contains( iShape ) && !extraData ) || !scene->isSelModeObject() || !scene->renderer )
 		return;
-
-	if ( !scene->isSelModeObject() || !scene->renderer )
-		return;
-
-	stack.push( iShape );
 
 	//qDebug() << "draw shape" << nif->getBlockNumber( iShape ) << nif->itemName( iShape );
-
-	scene->loadModelViewMatrix( parentTransform );
 
 	if ( name.endsWith( QLatin1StringView("ListShape") ) ) {
 		QModelIndex iShapes = nif->getIndex( iShape, "Sub Shapes" );
@@ -749,85 +745,21 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 					}
 				}
 
+				stack.push( iShape );
 				drawHvkShape( nif, nif->getBlockIndex( nif->getLink( nif->getIndex( iShapes, r ) ) ), stack,
 								scene, origin_color4fv, parentTransform );
+				stack.pop();
 			}
 		}
+		return;
+
 	} else if ( name == "bhkTransformShape" || name == "bhkConvexTransformShape" ) {
 		Matrix4 tm = parentTransform * nif->get<Matrix4>( iShape, "Transform" );
+		stack.push( iShape );
 		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), stack, scene, origin_color4fv, tm );
-	} else if ( name == "bhkSphereShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
+		stack.pop();
+		return;
 
-		scene->drawSphere( Vector3(), nif->get<float>( iShape, "Radius" ) );
-	} else if ( name == "bhkMultiSphereShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
-
-		QModelIndex iSpheres = nif->getIndex( iShape, "Spheres" );
-
-		for ( int r = 0; r < nif->rowCount( iSpheres ); r++ ) {
-			scene->drawSphere( nif->get<Vector3>( nif->getIndex( iSpheres, r ), "Center" ),
-								nif->get<float>( nif->getIndex( iSpheres, r ), "Radius" ) );
-		}
-	} else if ( name == "bhkBoxShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
-
-		Vector3 v = nif->get<Vector3>( iShape, "Dimensions" );
-		scene->drawBox( v, -v );
-	} else if ( name == "bhkCapsuleShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
-
-		scene->drawCapsule( nif->get<Vector3>( iShape, "First Point" ),
-							nif->get<Vector3>( iShape, "Second Point" ), nif->get<float>( iShape, "Radius" ) );
-	} else if ( name == "bhkCylinderShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
-
-		scene->drawCylinder( Vector3( nif->get<Vector4>( iShape, "Vertex A" ) ),
-								Vector3( nif->get<Vector4>( iShape, "Vertex B" ) ),
-								nif->get<float>( iShape, "Cylinder Radius" ) );
-	} else if ( name == "bhkNiTriStripsShape" ) {
-		scene->pushAndMultModelViewMatrix( Transform( Vector3(), bhkInvScale( nif ) ) );
-
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
-
-		scene->drawNiTSS( nif, iShape );
-#if 0
-		if ( Options::getHavokState() == HAVOK_SOLID ) {
-			QColor c = Options::hlColor();
-			c.setAlphaF( 0.3 );
-			scene->setGLColor( c );
-
-			scene->drawNiTSS( nif, iShape, true );
-		}
-#endif
-		scene->popModelViewMatrix();
-	} else if ( name == "bhkConvexVerticesShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
-
-		scene->drawConvexHull( nif, iShape, 1.0 );
-#if 0
-		if ( Options::getHavokState() == HAVOK_SOLID ) {
-			QColor c = Options::hlColor();
-			c.setAlphaF( 0.3 );
-			scene->setGLColor( c );
-
-			scene->drawConvexHull( nif, iShape, havokScale, true );
-		}
-#endif
 	} else if ( name == "bhkMoppBvTreeShape" ) {
 		if ( !scene->selecting ) {
 			if ( scene->currentBlock == nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ) ) {
@@ -840,13 +772,69 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 			}
 		}
 
+		stack.push( iShape );
 		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), stack,
 						scene, origin_color4fv, parentTransform );
-	} else if ( name == "bhkPackedNiTriStripsShape" || name == "hkPackedNiTriStripsData" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
+		stack.pop();
+		return;
+	}
+
+	scene->loadModelViewMatrix( parentTransform );
+	if ( scene->selecting )
+		scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
+
+	if ( name == "bhkSphereShape" ) {
+		scene->drawSphere( Vector3(), nif->get<float>( iShape, "Radius" ) );
+
+	} else if ( name == "bhkMultiSphereShape" ) {
+		QModelIndex iSpheres = nif->getIndex( iShape, "Spheres" );
+
+		for ( int r = 0; r < nif->rowCount( iSpheres ); r++ ) {
+			scene->drawSphere( nif->get<Vector3>( nif->getIndex( iSpheres, r ), "Center" ),
+								nif->get<float>( nif->getIndex( iSpheres, r ), "Radius" ) );
 		}
 
+	} else if ( name == "bhkBoxShape" ) {
+		Vector3 v = nif->get<Vector3>( iShape, "Dimensions" );
+		scene->drawBox( v, -v );
+
+	} else if ( name == "bhkCapsuleShape" ) {
+		scene->drawCapsule( nif->get<Vector3>( iShape, "First Point" ),
+							nif->get<Vector3>( iShape, "Second Point" ), nif->get<float>( iShape, "Radius" ) );
+
+	} else if ( name == "bhkCylinderShape" ) {
+		scene->drawCylinder( Vector3( nif->get<Vector4>( iShape, "Vertex A" ) ),
+								Vector3( nif->get<Vector4>( iShape, "Vertex B" ) ),
+								nif->get<float>( iShape, "Cylinder Radius" ) );
+
+	} else if ( name == "bhkNiTriStripsShape" ) {
+		scene->pushAndMultModelViewMatrix( Transform( Vector3(), bhkInvScale( nif ) ) );
+
+		scene->drawNiTSS( nif, iShape );
+#if 0
+		if ( Options::getHavokState() == HAVOK_SOLID ) {
+			QColor c = Options::hlColor();
+			c.setAlphaF( 0.3 );
+			scene->setGLColor( c );
+
+			scene->drawNiTSS( nif, iShape, true );
+		}
+#endif
+		scene->popModelViewMatrix();
+
+	} else if ( name == "bhkConvexVerticesShape" ) {
+		scene->drawConvexHull( nif, iShape, 1.0 );
+#if 0
+		if ( Options::getHavokState() == HAVOK_SOLID ) {
+			QColor c = Options::hlColor();
+			c.setAlphaF( 0.3 );
+			scene->setGLColor( c );
+
+			scene->drawConvexHull( nif, iShape, havokScale, true );
+		}
+#endif
+
+	} else if ( name == "bhkPackedNiTriStripsShape" || name == "hkPackedNiTriStripsData" ) {
 		QModelIndex iData = nif->getBlockIndex( nif->getLink( iShape, "Data" ) );
 		QModelIndex iVerts, iTriangles;
 
@@ -861,7 +849,7 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 									size_t( triangles.size() ) * 3, GL_UNSIGNED_SHORT, triangles.constData() );
 
 			// Handle Selection of hkPackedNiTriStripsData
-			if ( scene->currentBlock == iData ) {
+			if ( scene->currentBlock == iData && !scene->selecting ) {
 				int i = -1;
 				QString n = scene->currentIndex.data( NifSkopeDisplayRole ).toString();
 				QModelIndex iParent = scene->currentIndex.parent();
@@ -922,9 +910,9 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 					}
 #endif
 				}
-			}
-			// Handle Selection of bhkPackedNiTriStripsShape
-			else if ( scene->currentBlock == iShape ) {
+
+			} else if ( scene->currentBlock == iShape && !scene->selecting ) {
+				// Handle Selection of bhkPackedNiTriStripsShape
 				QString n = scene->currentIndex.data( NifSkopeDisplayRole ).toString();
 				QModelIndex iParent = scene->currentIndex.parent();
 
@@ -970,11 +958,8 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 				}
 			}
 		}
-	} else if ( name == "bhkCompressedMeshShape" ) {
-		if ( scene->selecting ) {
-			scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iShape ) ) );
-		}
 
+	} else if ( name == "bhkCompressedMeshShape" ) {
 		scene->drawCMS( nif, iShape );
 #if 0
 		if ( Options::getHavokState() == HAVOK_SOLID ) {
@@ -986,8 +971,6 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 		}
 #endif
 	}
-
-	stack.pop();
 }
 
 void Node::drawHvkConstraint( const NifModel * nif, const QModelIndex & iConstraint, Scene * scene )
