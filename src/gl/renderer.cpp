@@ -90,11 +90,11 @@ void Renderer::updateSettings()
 	int	tmp = settings.value( "Settings/Render/General/Mesh Cache Size", 128 ).toInt();
 	cfg.meshCacheSize = std::uint8_t( std::clamp< int >( ( tmp + 4 ) >> 3, 1, 128 ) );
 	tmp = settings.value( "Settings/Render/General/Cube Map Bgnd", 1 ).toInt();
-	globalUniforms->renderOptions1[2] = std::clamp< int >( tmp, -1, 6 );
+	globalUniforms->cubeBgndMipLevel = std::clamp< int >( tmp, -1, 6 );
 	tmp = settings.value( "Settings/Render/General/Sf Parallax Steps", 200 ).toInt();
-	globalUniforms->renderOptions1[3] = std::clamp< int >( tmp, 16, 512 );
-	globalUniforms->renderOptions2[0] = settings.value( "Settings/Render/General/Sf Parallax Scale", 0.0f).toFloat();
-	globalUniforms->renderOptions2[1] = settings.value( "Settings/Render/General/Sf Parallax Offset", 0.5f).toFloat();
+	globalUniforms->sfParallaxMaxSteps = std::clamp< int >( tmp, 16, 512 );
+	globalUniforms->sfParallaxScale = settings.value( "Settings/Render/General/Sf Parallax Scale", 0.0f).toFloat();
+	globalUniforms->sfParallaxOffset = settings.value( "Settings/Render/General/Sf Parallax Offset", 0.5f).toFloat();
 	cfg.cubeMapPathFO76 = settings.value( "Settings/Render/General/Cube Map Path FO 76", "textures/shared/cubemaps/mipblur_defaultoutside1.dds" ).toString();
 	cfg.cubeMapPathSTF = settings.value( "Settings/Render/General/Cube Map Path STF", "textures/cubemaps/cell_cityplazacube.dds" ).toString();
 	setCacheSize( std::uint32_t( cfg.meshCacheSize ) << 23 );
@@ -1334,7 +1334,7 @@ void Renderer::drawSkyBox( Scene * scene )
 		-10.0f, -10.0f,  10.0f,   10.0f, -10.0f,  10.0f,  -10.0f,  10.0f,  10.0f,   10.0f,  10.0f,  10.0f
 	};
 
-	if ( globalUniforms->renderOptions1[2] < 0 || !scene->nifModel || scene->nifModel->getBSVersion() < 151
+	if ( globalUniforms->cubeBgndMipLevel < 0 || !scene->nifModel || scene->nifModel->getBSVersion() < 151
 		|| scene->selecting || scene->hasVisMode( Scene::VisSilhouette ) ) {
 		return;
 	}

@@ -61,7 +61,7 @@ void main()
 	vec4	v = vec4( vertexPosition, 1.0 );
 
 	if ( boneWeights[0] > 0.0 ) {
-		if ( renderOptions1.x != 0 )
+		if ( doSkinning )
 			boneTransform( v );
 		if ( ( selectionFlags & 8 ) != 0 )
 			C = boneWeightsColor();
