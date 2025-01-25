@@ -77,6 +77,7 @@ public:
 	bool bindShape() const;
 
 	virtual QModelIndex vertexAt( int ) const { return QModelIndex(); }
+	virtual QModelIndex triangleAt( int ) const { return QModelIndex(); }
 	virtual void updateLodLevel() { lodTriangleCount = triangles.size(); }
 
 protected:

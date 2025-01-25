@@ -184,7 +184,7 @@ void BSShape::updateData( const NifModel * nif )
 
 QModelIndex BSShape::vertexAt( int idx ) const
 {
-	auto nif = NifModel::fromIndex( iBlock );
+	auto nif = scene->nifModel;
 	if ( !nif )
 		return QModelIndex();
 
@@ -198,6 +198,21 @@ QModelIndex BSShape::vertexAt( int idx ) const
 	}
 
 	return nif->getIndex( nif->getIndex( nif->getIndex( blk, "Vertex Data" ), idx ), "Vertex" );
+}
+
+QModelIndex BSShape::triangleAt( int idx ) const
+{
+	auto nif = scene->nifModel;
+	if ( !nif )
+		return QModelIndex();
+
+	auto blk = iBlock;
+	if ( iSkinPart.isValid() ) {
+		// TODO: Triangles are on NiSkinPartition in version 100
+		return QModelIndex();
+	}
+
+	return nif->getIndex( nif->getIndex( blk, "Triangles" ), idx );
 }
 
 void BSShape::transformShapes()
@@ -236,12 +251,13 @@ void BSShape::drawShapes( NodeList * secondPass )
 		return;
 	}
 
-	auto nif = NifModel::fromIndex( iBlock );
+	auto nif = scene->nifModel;
 
-	if ( !bindShape() )
+	if ( !nif || !bindShape() )
 		return;
 
-	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+	int	selectionFlags = scene->selecting;
+	if ( ( selectionFlags & int(Scene::SelVertex) ) && drawInSecondPass ) [[unlikely]] {
 		glDisable( GL_FRAMEBUFFER_SRGB );
 		drawVerts();
 		return;
@@ -258,29 +274,29 @@ void BSShape::drawShapes( NodeList * secondPass )
 
 	qsizetype	numTriangles = std::clamp< qsizetype >( lodTriangleCount, 0, triangles.size() );
 
-	if ( !scene->selecting ) [[likely]] {
+	if ( !selectionFlags ) [[likely]] {
 		if ( nif->getBSVersion() >= 151 )
 			glEnable( GL_FRAMEBUFFER_SRGB );
 		else
 			glDisable( GL_FRAMEBUFFER_SRGB );
 		shader = context->setupProgram( this, shader );
 
-	} else {
+	} else if ( auto prog = context->useProgram( "selection.prog" ); prog ) {
 		if ( nif->getBSVersion() >= 151 )
 			glDisable( GL_FRAMEBUFFER_SRGB );
 
-		auto	prog = context->useProgram( "selection.prog" );
-		if ( prog ) {
-			setUniforms( prog );
-			prog->uni1i( "selectionFlags", 0x0001 );
-			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
-		}
+		setUniforms( prog );
+		prog->uni1i( "selectionFlags", selectionFlags & 5 );
+		prog->uni1i( "selectionParam", ( !( selectionFlags & int(Scene::SelVertex) ) ? nodeId : -1 ) );
 	}
 
 	if ( numTriangles > 0 )
 		context->fn->glDrawElements( GL_TRIANGLES, GLsizei( numTriangles * 3 ), GL_UNSIGNED_SHORT, (void *) 0 );
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
+
+	if ( selectionFlags & int( Scene::SelVertex ) ) [[unlikely]]
+		drawVerts();
 }
 
 void BSShape::drawVerts() const

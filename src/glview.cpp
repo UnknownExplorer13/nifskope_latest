@@ -503,16 +503,17 @@ void GLView::paintGL()
 	// Setup projection mode
 	glProjection();
 
-	cx->globalUniforms->lightingControls = FloatVector4( toneMapping, brightnessScale, 1.0f, 0.0f );
-	if ( !scene->hasOption(Scene::DoGlow) )
-		cx->globalUniforms->lightingControls[2] = 0.0f;
+	auto &	globalUniforms = *( cx->globalUniforms );
+	globalUniforms.toneMapScale = toneMapping;
+	globalUniforms.brightnessScale = brightnessScale;
+	globalUniforms.glowScale = ( scene->hasOption(Scene::DoGlow) ? 1.0f : 0.0f );
 	FloatVector4	mat_amb( 0.0f );
 	FloatVector4	mat_diff( 0.0f );
 	Vector3	lightDir( 0.0f, 0.0f, 1.0f );
 	bool	drawLightPos = false;
 
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
-		cx->globalUniforms->lightingControls.blendValues( FloatVector4( 0.0f ), 0x06 );
+		globalUniforms.brightnessScale = 0.0f;
 
 	} else if ( scene->hasOption(Scene::DoLighting) ) {
 		// Setup light
@@ -522,15 +523,14 @@ void GLView::paintGL()
 			Matrix m;
 			m.fromEuler( 0, 0, deg2rad( planarAngle ) );
 			lightDir = m * Vector3( std::sin( decl ), 0.0f, std::cos( decl ) );
-			cx->globalUniforms->lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
+			globalUniforms.lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
 
 			drawLightPos = scene->hasVisMode( Scene::VisLightPos );
 		} else {
-			cx->globalUniforms->lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f );
+			globalUniforms.lightSourcePosition[0] = FloatVector4( 0.0f, 0.0f, 1.0f, 0.0f );
 		}
 
 		mat_amb = FloatVector4( ambient );
-		mat_amb[3] = toneMapping;
 
 		const FloatVector4	a6( 0.02729229f, -0.03349948f, -0.93633725f, 0.0f );
 		const FloatVector4	a5( 0.18128491f, -0.17835246f, 1.44207620f, 0.0f );
@@ -551,15 +551,17 @@ void GLView::paintGL()
 	} else {
 		mat_amb = FloatVector4( 0.5f );
 		mat_diff = FloatVector4( 1.0f );
-		cx->globalUniforms->lightingControls.blendValues( FloatVector4( 1.0f ), 0x03 );
+		globalUniforms.toneMapScale = 1.0f;
+		globalUniforms.brightnessScale = 1.0f;
 	}
 
 	// in frontal light mode, planar angle controls environment map rotation around the Z axis
 	cx->setViewTransform( scene->view, int( cfg.upAxis ), ( frontalLight ? planarAngle : 0.0f ) );
-	cx->globalUniforms->lightSourceAmbient = mat_amb;
-	cx->globalUniforms->lightSourceDiffuse[0] = mat_diff;
-	cx->globalUniforms->renderOptions1[0] = std::int32_t( scene->hasOption(Scene::DoSkinning) );
-	cx->globalUniforms->renderOptions1[1] = std::int32_t( scene->options );
+	globalUniforms.lightSourceAmbient = mat_amb;
+	globalUniforms.lightSourceDiffuse[0] = mat_diff;
+	globalUniforms.glowScaleSRGB = float( std::sqrt( globalUniforms.glowScale ) );
+	globalUniforms.doSkinning = std::int32_t( scene->hasOption(Scene::DoSkinning) );
+	globalUniforms.sceneOptions = std::int32_t( scene->options );
 	cx->setGlobalUniforms();
 
 	cx->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
@@ -609,9 +611,9 @@ void GLView::paintGL()
 		glEnable( GL_DEPTH_TEST );
 		glDepthFunc( GL_LEQUAL );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-		scene->selecting = true;
+		scene->selecting = ( scene->isSelModeVertex() ? 3 : 5 );
 	} else {
-		scene->selecting = false;
+		scene->selecting = 0;
 	}
 #endif
 
@@ -803,7 +805,8 @@ void GLView::setVisMode( Scene::VisMode mode, bool checked )
 
 typedef void (Scene::* DrawFunc)( void );
 
-static int indexAt( NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, const QPointF & pos, int & furn )
+static int indexAt(
+	NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, const QPointF & pos, int & furn, bool shiftModifier )
 {
 	// Color Key O(1) selection
 	//	Open GL 3.0 says glRenderMode is deprecated
@@ -845,11 +848,16 @@ static int indexAt( NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, c
 	context->setDefaultVertexAttribs( Scene::defaultAttrMask, Scene::defaultVertexAttrs );
 
 	// Rasterize the scene
-	scene->selecting = true;
+	int	selectionFlags = int( Scene::SelObject );
+	if ( scene->isSelModeVertex() )
+		selectionFlags |= int( Scene::SelVertex );
+	else if ( shiftModifier )
+		selectionFlags |= int( Scene::SelTriangle );
+	scene->selecting = (unsigned char) selectionFlags;
 	for ( DrawFunc df : drawFunc ) {
 		(scene->*df)();
 	}
-	scene->selecting = false;
+	scene->selecting = 0;
 
 	context->stopProgram();
 	context->shrinkCache();
@@ -881,7 +889,7 @@ static int indexAt( NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, c
 	int choose = getIDFromColorKey( pixel );
 
 	// Pick BSFurnitureMarker
-	if ( choose > 0 ) {
+	if ( choose > 0 && selectionFlags == int( Scene::SelObject ) ) {
 		int b = choose & 0x0ffff;
 		int p = ( choose >> 16 ) & 0x0ffff;
 		auto furnBlock = model->getBlockIndex( b, "BSFurnitureMarker" );
@@ -896,7 +904,7 @@ static int indexAt( NifModel * model, Scene * scene, QList<DrawFunc> drawFunc, c
 	return choose;
 }
 
-QModelIndex GLView::indexAt( const QPointF & pos, [[maybe_unused]] int cycle )
+QModelIndex GLView::indexAt( const QPointF & pos, bool shiftModifier )
 {
 	if ( !(model && isValid() && isVisible() && height() && scene->renderer) )
 		return QModelIndex();
@@ -925,7 +933,7 @@ QModelIndex GLView::indexAt( const QPointF & pos, [[maybe_unused]] int cycle )
 	glProjection( int( posScaled.x() + 0.5 ), int( posScaled.y() + 0.5 ) );
 
 	int choose = -1, furn = -1;
-	choose = ::indexAt( model, scene, df, posScaled, /*out*/ furn );
+	choose = ::indexAt( model, scene, df, posScaled, /*out*/ furn, shiftModifier );
 
 	popGLContext( prvContext );
 
@@ -941,9 +949,17 @@ QModelIndex GLView::indexAt( const QPointF & pos, [[maybe_unused]] int cycle )
 			chooseIndex = shape->vertexAt( vert );
 	} else if ( choose >= 0 ) {
 		// Block Index
-		chooseIndex = model->getBlockIndex( choose );
-
-		if ( furn != -1 ) {
+		chooseIndex = model->getBlockIndex( !shiftModifier ? choose : ( choose & 0x7FFF ) );
+		if ( shiftModifier ) {
+			// Triangle
+			if ( auto node = scene->getNode( scene->nifModel, chooseIndex ); node ) {
+				if ( auto shape = dynamic_cast< Shape * >( node ); shape ) {
+					auto	triangleIndex = shape->triangleAt( int( (unsigned int) choose >> 15 ) );
+					if ( triangleIndex.isValid() )
+						chooseIndex = triangleIndex;
+				}
+			}
+		} else if ( furn != -1 ) {
 			// Furniture Row @ Block Index
 			chooseIndex = model->getIndex( model->getIndex( chooseIndex, "Positions" ), furn );
 		}
@@ -1909,11 +1925,6 @@ void GLView::mousePressEvent( QMouseEvent * event )
 
 	lastPos = event->position();
 
-	if ( (pressPos - lastPos).manhattanLength() <= 3 )
-		cycleSelect++;
-	else
-		cycleSelect = 0;
-
 	pressPos = lastPos;
 }
 
@@ -1934,7 +1945,7 @@ void GLView::mouseReleaseEvent( QMouseEvent * event )
 	bool	isColorPicker = bool( event->modifiers() & Qt::AltModifier );
 #endif
 	if ( !isColorPicker ) {
-		QModelIndex idx = indexAt( event->position(), cycleSelect );
+		QModelIndex idx = indexAt( event->position(), bool( event->modifiers() & Qt::ShiftModifier ) );
 		scene->currentBlock = model->getBlockIndex( idx );
 		scene->currentIndex = idx.sibling( idx.row(), 0 );
 

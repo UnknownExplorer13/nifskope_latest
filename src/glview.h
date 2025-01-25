@@ -146,7 +146,7 @@ public:
 	QColor clearColor() const;
 
 
-	QModelIndex indexAt( const QPointF & p, int cycle = 0 );
+	QModelIndex indexAt( const QPointF & p, bool shiftModifier = false );
 
 public slots:
 	void update();
@@ -239,7 +239,6 @@ private:
 	QPointF pressPos;
 	Vector3 mouseMov;
 	Vector3 mouseRot;
-	int cycleSelect;
 	std::uint32_t mouseButtonState = 0;
 
 	QPersistentModelIndex iDragTarget;
