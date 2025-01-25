@@ -167,10 +167,13 @@ GLView::GLView( QWindow * p )
 
 GLView::~GLView()
 {
-	flush();
+	auto	prvContext = pushGLContext();
 
+	flush();
 	delete textures;
 	delete scene;
+
+	popGLContext( prvContext );
 }
 
 QWidget * GLView::createWindowContainer( QWidget * parent )
@@ -333,34 +336,19 @@ void GLView::updateAnimationState( bool checked )
  *  OpenGL
  */
 
-inline QOpenGLContext * GLView::pushGLContext()
-{
-	QOpenGLContext *	prvContext = QOpenGLContext::currentContext();
-	if ( context() != prvContext )
-		makeCurrent();
-	return prvContext;
-}
-
-inline void GLView::popGLContext( QOpenGLContext * prvContext )
-{
-	if ( !prvContext )
-		doneCurrent();
-	else if ( prvContext != context() )
-		prvContext->makeCurrent( prvContext->surface() );
-}
-
 void GLView::initializeGL()
 {
-	glContext = context();
+	auto	cx = context();
 	// Obtain a functions object and resolve all entry points
-	glFuncs = glContext->functions();
+	auto	glFuncs = cx->functions();
 	if ( !glFuncs ) {
 		QMessageBox::critical( nullptr, "NifSkope error", tr( "Could not obtain OpenGL functions" ) );
 		std::exit( 1 );
 	}
 	glFuncs->initializeOpenGLFunctions();
-	scene->setOpenGLContext( glContext );
-	textures->setOpenGLContext( scene->renderer );
+	scene->setOpenGLContext( cx );
+	glContext = scene->renderer;
+	textures->setOpenGLContext( glContext );
 	updateShaders();		// should be called after TexCache is initialized
 
 	// Initial viewport values
