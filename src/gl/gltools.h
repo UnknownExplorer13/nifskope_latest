@@ -36,7 +36,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "data/niftypes.h"
 #include "filebuf.hpp"
 
-#include <QOpenGLContext>
 #include <QPair>
 
 
