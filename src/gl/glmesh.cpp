@@ -706,14 +706,15 @@ void Mesh::drawShapes( NodeList * secondPass )
 
 	glDisable( GL_FRAMEBUFFER_SRGB );
 
-	if ( scene->selecting && scene->isSelModeVertex() ) [[unlikely]] {
+	int	selectionFlags = scene->selecting;
+	if ( ( selectionFlags & int(Scene::SelVertex) ) && drawInSecondPass ) [[unlikely]] {
 		drawVerts();
 		return;
 	}
 
 	// TODO: Option to hide Refraction and other post effects
 
-	//if ( !scene->selecting ) {
+	//if ( !selectionFlags ) {
 	//	qDebug() << viewTrans().translation;
 		//qDebug() << Vector3( nif->get<Vector4>( iBlock, "Translation" ) );
 	//}
@@ -728,17 +729,14 @@ void Mesh::drawShapes( NodeList * secondPass )
 	else
 		glPolygonOffset( 1.0f, 2.0f );
 
-	if ( !scene->selecting ) [[likely]] {
+	if ( !selectionFlags ) [[likely]] {
 		// TODO: Hotspot.  See about optimizing this.
 		shader = context->setupProgram( this, shader );
 
-	} else {
-		auto	prog = context->useProgram( "selection.prog" );
-		if ( prog ) {
-			setUniforms( prog );
-			prog->uni1i( "selectionFlags", 0x0001 );
-			prog->uni1i( "selectionParam", ( scene->isSelModeObject() ? nodeId : -1 ) );
-		}
+	} else if ( auto prog = context->useProgram( "selection.prog" ); prog ) {
+		setUniforms( prog );
+		prog->uni1i( "selectionFlags", selectionFlags & 5 );
+		prog->uni1i( "selectionParam", ( !( selectionFlags & int(Scene::SelVertex) ) ? nodeId : -1 ) );
 	}
 
 	if ( isDoubleSided ) {
@@ -756,6 +754,9 @@ void Mesh::drawShapes( NodeList * secondPass )
 	}
 
 	glDisable( GL_POLYGON_OFFSET_FILL );
+
+	if ( selectionFlags & int( Scene::SelVertex ) ) [[unlikely]]
+		drawVerts();
 }
 
 void Mesh::drawVerts() const

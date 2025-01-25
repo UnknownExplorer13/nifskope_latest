@@ -3,6 +3,7 @@
 * Reworked the renderer and UV editor to use OpenGL 4.2 or (on macOS) 4.1 core profile. The use of legacy (compatibility profile) functions has been removed. There is a new render setting for the size of mesh cache (vertex and element buffers), but the option to disable shaders has been removed.
 * Antialiasing (MSAA) now defaults to 4x, and the supported number of samples can be detected in the settings.
 * Added support for Fallout 4 and 76 Havok material types, contributed by Jonathan Ostrus.
+* In object selection mode, triangles can be selected by shift-clicking. Note that this feature is not implemented yet for some types of meshes.
 * New render setting for the color of the grid, and the axes are highlighted with different colors (X: red, Y: green, Z: blue).
 * When the up axis is set to X or Y, the environment map is now correctly rotated so that the "up" direction matches the setting.
 * Flipping the view (F11) is no longer limited to the preset view directions.
