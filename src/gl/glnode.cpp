@@ -711,25 +711,27 @@ void Node::drawTriangleIndex( const QVector<Vector3> & verts, const Triangle & t
 	scene->renderText( position, QString( "%1" ).arg( i ) );
 }
 
-void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStack<QModelIndex> & stack,
+void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, HvkShapeStackItem * stack,
 							Scene * scene, FloatVector4 origin_color4fv, const Matrix4 & parentTransform )
 {
-	if ( !nif || !iShape.isValid() )
+	if ( !nif || !iShape.isValid() || !scene->isSelModeObject() || !scene->renderer )
 		return;
+
+	for ( auto i = stack; i; i = i->parent ) {
+		if ( i->iShape == iShape )
+			return;
+	}
 
 	QString name = nif->itemName( iShape );
 
-	bool extraData = (name == "hkPackedNiTriStripsData");
-
-	if ( ( stack.contains( iShape ) && !extraData ) || !scene->isSelModeObject() || !scene->renderer )
-		return;
-
-	//qDebug() << "draw shape" << nif->getBlockNumber( iShape ) << nif->itemName( iShape );
+	//qDebug() << "draw shape" << nif->getBlockNumber( iShape ) << name;
 
 	if ( name.endsWith( QLatin1StringView("ListShape") ) ) {
 		QModelIndex iShapes = nif->getIndex( iShape, "Sub Shapes" );
 
 		if ( iShapes.isValid() ) {
+			HvkShapeStackItem	shapeStack( iShape, stack );
+
 			for ( int r = 0; r < nif->rowCount( iShapes ); r++ ) {
 				if ( !scene->selecting ) {
 					if ( scene->currentBlock == nif->getBlockIndex( nif->getLink( nif->getIndex( iShapes, r ) ) ) ) {
@@ -745,19 +747,22 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 					}
 				}
 
-				stack.push( iShape );
-				drawHvkShape( nif, nif->getBlockIndex( nif->getLink( nif->getIndex( iShapes, r ) ) ), stack,
+				drawHvkShape( nif, nif->getBlockIndex( nif->getLink( nif->getIndex( iShapes, r ) ) ), &shapeStack,
 								scene, origin_color4fv, parentTransform );
-				stack.pop();
 			}
 		}
 		return;
 
 	} else if ( name == "bhkTransformShape" || name == "bhkConvexTransformShape" ) {
-		Matrix4 tm = parentTransform * nif->get<Matrix4>( iShape, "Transform" );
-		stack.push( iShape );
-		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), stack, scene, origin_color4fv, tm );
-		stack.pop();
+		Matrix4 tm = nif->get<Matrix4>( iShape, "Transform" );
+		tm( 0, 3 ) = 0.0f;
+		tm( 1, 3 ) = 0.0f;
+		tm( 2, 3 ) = 0.0f;
+		tm( 3, 3 ) = 1.0f;
+		tm = parentTransform * tm;
+		HvkShapeStackItem	shapeStack( iShape, stack );
+		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), &shapeStack,
+						scene, origin_color4fv, tm );
 		return;
 
 	} else if ( name == "bhkMoppBvTreeShape" ) {
@@ -772,10 +777,9 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, QStac
 			}
 		}
 
-		stack.push( iShape );
-		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), stack,
+		HvkShapeStackItem	shapeStack( iShape, stack );
+		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), &shapeStack,
 						scene, origin_color4fv, parentTransform );
-		stack.pop();
 		return;
 	}
 
@@ -1413,14 +1417,11 @@ void Node::drawHavok()
 		}
 	}
 
-	QStack<QModelIndex> shapeStack;
-
 	if ( scene->selecting )
 		scene->setGLLineWidth( GLView::Settings::lineWidthSelect );	// make selection click a little more easy
 
 	Matrix4	m = *( scene->currentModelViewMatrix );
-	drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iBody, "Shape" ) ), shapeStack,
-					scene, colors[ color_index ], m );
+	drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iBody, "Shape" ) ), nullptr, scene, colors[ color_index ], m );
 
 	if ( scene->selecting && scene->hasOption(Scene::ShowAxes) ) {
 		scene->setGLColor( getColorKeyFromID( nif->getBlockNumber( iBody ) ) );
