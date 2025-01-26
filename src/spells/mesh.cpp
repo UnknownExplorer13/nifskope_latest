@@ -542,25 +542,28 @@ REGISTER_SPELL( spFlipFace )
 class spSetTriangleToZero final : public Spell
 {
 public:
-    QString name() const override final { return Spell::tr( "Set Triangle to 0" ); }
+    QString name() const override final { return Spell::tr("Set Triangle to 0"); }
 
-    bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+    bool isApplicable(const NifModel* nif, const QModelIndex& index) override final
     {
-        return ( nif->getValue( index ).type() == NifValue::tTriangle )
-                || ( nif->isArray( index ) && nif->getValue( nif->getIndex( index, 0 ) ).type() == NifValue::tTriangle );
+        return (nif->getValue(index).type() == NifValue::tTriangle)
+            || (nif->isArray(index) && nif->getValue(nif->getIndex(index, 0)).type() == NifValue::tTriangle);
     }
 
-    QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+    QModelIndex cast(NifModel* nif, const QModelIndex& index) override final
     {
-        if ( nif->isArray( index ) ) {
-            QVector<Triangle> tris = nif->getArray<Triangle>( index );
-            for ( int t = 0; t < tris.count(); t++ )
-                tris[t].flip();
-            nif->setArray<Triangle>( index, tris );
+        if (nif->isArray(index)) {
+            QVector<Triangle> tris = nif->getArray<Triangle>(index);
+            for (int t = 0; t < tris.count(); t++) {
+                // Use the set method to reset all vertices to 0
+                tris[t].set(0, 0, 0);
+            }
+            nif->setArray<Triangle>(index, tris);
         } else {
-            Triangle t = nif->get<Triangle>( index );
-            t.flip();
-            nif->set<Triangle>( index, t );
+            Triangle t = nif->get<Triangle>(index);
+            // Use the set method to reset all vertices to 0
+            t.set(0, 0, 0);
+            nif->set<Triangle>(index, t);
         }
         return index;
     }
