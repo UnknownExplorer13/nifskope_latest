@@ -753,33 +753,24 @@ void Node::drawHvkShape( const NifModel * nif, const QModelIndex & iShape, HvkSh
 		}
 		return;
 
-	} else if ( name == "bhkTransformShape" || name == "bhkConvexTransformShape" ) {
-		Matrix4 tm = nif->get<Matrix4>( iShape, "Transform" );
-		tm( 0, 3 ) = 0.0f;
-		tm( 1, 3 ) = 0.0f;
-		tm( 2, 3 ) = 0.0f;
-		tm( 3, 3 ) = 1.0f;
-		tm = parentTransform * tm;
-		HvkShapeStackItem	shapeStack( iShape, stack );
-		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), &shapeStack,
-						scene, origin_color4fv, tm );
-		return;
-
-	} else if ( name == "bhkMoppBvTreeShape" ) {
-		if ( !scene->selecting ) {
-			if ( scene->currentBlock == nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ) ) {
-				// fix: add selected visual to havok meshes
-				scene->setGLColor( scene->highlightColor );
-				scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );	// taken from "DrawTriangleSelection"
-			} else {
-				scene->setGLColor( origin_color4fv );
-				scene->setGLLineWidth( GLView::Settings::lineWidthWireframe * 0.625f );
-			}
+	} else if ( name == "bhkTransformShape" || name == "bhkConvexTransformShape" || name == "bhkMoppBvTreeShape" ) {
+		QModelIndex	iChild = nif->getBlockIndex( nif->getLink( iShape, "Shape" ) );
+		if ( !scene->selecting && scene->currentBlock == iChild ) {
+			// fix: add selected visual to havok meshes
+			scene->setGLColor( scene->highlightColor );
+			scene->setGLLineWidth( GLView::Settings::lineWidthWireframe );	// taken from "DrawTriangleSelection"
 		}
-
+		Matrix4	tm( parentTransform );
+		if ( name.endsWith( QLatin1StringView("TransformShape") ) ) {
+			Matrix4	tmp = nif->get<Matrix4>( iShape, "Transform" );
+			tmp( 0, 3 ) = 0.0f;
+			tmp( 1, 3 ) = 0.0f;
+			tmp( 2, 3 ) = 0.0f;
+			tmp( 3, 3 ) = 1.0f;
+			tm = tm * tmp;
+		}
 		HvkShapeStackItem	shapeStack( iShape, stack );
-		drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iShape, "Shape" ) ), &shapeStack,
-						scene, origin_color4fv, parentTransform );
+		drawHvkShape( nif, iChild, &shapeStack, scene, origin_color4fv, tm );
 		return;
 	}
 
@@ -1415,10 +1406,9 @@ void Node::drawHavok()
 			scene->setGLLineWidth( GLView::Settings::lineWidthHighlight );
 			//scene->setGLPointSize( GLView::Settings::vertexSelectPointSize );
 		}
-	}
-
-	if ( scene->selecting )
+	} else {
 		scene->setGLLineWidth( GLView::Settings::lineWidthSelect );	// make selection click a little more easy
+	}
 
 	Matrix4	m = *( scene->currentModelViewMatrix );
 	drawHvkShape( nif, nif->getBlockIndex( nif->getLink( iBody, "Shape" ) ), nullptr, scene, colors[ color_index ], m );
