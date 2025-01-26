@@ -1184,65 +1184,63 @@ FloatVector4 DDSTexture16::cubeMapImportanceSample(
   do
   {
     FloatVector4  v = *(sampleBuf++);
-    FloatVector4  xyz = (t * v[0]) + (b * v[1]) + (n * v[2]);
     float   mipLevel = v[3];
-    float   x = xyz[0];
-    float   y = xyz[1];
-    float   z = xyz[2];
-    float   xm = float(std::fabs(x));
-    float   ym = float(std::fabs(y));
-    float   zm = float(std::fabs(z));
-    float   tmp = std::max(xm, std::max(ym, zm));
-    float   d = 0.5f / tmp;
     int     m0 = int(mipLevel);
     float   mf = float(m0);
+    unsigned int  xMask = xMaskMip0 >> (unsigned char) m0;
+    float   w = float(int(xMask + 1U));
+    FloatVector4  xyz = (t * v[0]) + (b * v[1]) + (n * v[2]);
+    FloatVector4  xyzm(xyz);
+    xyzm.absValues();
+    unsigned int  m = xyz.getSignMask();
+    float   tmp = std::max(std::max(xyzm[0], xyzm[1]), xyzm[2]);
+    float   d = w / tmp;
     size_t  i = 0;
-    if (!(xm < tmp))                    // +X (0), -X (1)
+    FloatVector4  s(1.0f, -1.0f, 1.0f, -1.0f);
+    if (!(xyzm[0] < tmp))               // +X (0), -X (1)
     {
-      if (x < 0.0f)
-      {
-        z = -z;
+      if (m & 1U)
         i = 1;
-      }
-      x = 0.5f - z * d;
-      y = 0.5f - y * d;
+      else
+        s.shuffleValues(0x55);
+      xyz.shuffleValues(0x66);          // ZYZY
     }
-    else if (!(ym < tmp))               // +Y (2), -Y (3)
+    else if (!(xyzm[1] < tmp))          // +Y (2), -Y (3)
     {
       i = 2;
-      if (y < 0.0f)
-      {
-        z = -z;
+      if (m & 2U)
         i = 3;
-      }
-      x = x * d + 0.5f;
-      y = z * d + 0.5f;
+      else
+        s.shuffleValues(0x00);
+      xyz.shuffleValues(0x88);          // XZXZ
     }
     else                                // +Z (4), -Z (5)
     {
       i = 4;
-      if (z < 0.0f)
+      if (m & 4U)
       {
-        x = -x;
+        s.shuffleValues(0x55);
         i = 5;
       }
-      x = x * d + 0.5f;
-      y = 0.5f - y * d;
+      xyz.shuffleValues(0x44);          // XYXY
     }
-    int     x0, y0;
-    float   xf, yf;
-    unsigned int  xMask;
-    if (!convertTexCoord_Cube(x0, y0, xf, yf, xMask, x, y, m0)) [[unlikely]]
-      mipLevel = mf;
-    FloatVector4  c0(getPixelB_Cube(textureData[m0], x0, y0, i,
-                                    textureDataSize, xf, yf, xMask));
-    if (mf != mipLevel) [[likely]]
+    xyz = xyz * s * d + w;
+    xyz = xyz * FloatVector4(0.5f, 0.5f, 0.25f, 0.25f) - 0.5f;
+    FloatVector4  xy_f(xyz);
+    xy_f.floorValues();
+    std::int32_t  xy_i[4];
+    xy_f.convertToInt32(xy_i);
+    xy_f = xyz - xy_f;
+    FloatVector4  c0(getPixelB_Cube(textureData[m0], xy_i[0], xy_i[1], i,
+                                    textureDataSize, xy_f[0], xy_f[1], xMask));
+    if (xMask && mf != mipLevel) [[likely]]
     {
-      mf = mipLevel - mf;
-      getNextMipTexCoord(x0, y0, xf, yf);
-      FloatVector4  c1(getPixelB_Cube(textureData[m0 + 1], x0, y0, i,
-                                      textureDataSize, xf, yf, xMask >> 1));
-      c0 = (c0 * (1.0f - mf)) + (c1 * mf);
+      mf -= mipLevel;
+      c0 += (c0 * mf);
+      FloatVector4  c1(getPixelB_Cube(textureData[m0 + 1], xy_i[2], xy_i[3], i,
+                                      textureDataSize, xy_f[2], xy_f[3],
+                                      xMask >> 1));
+      c0 -= (c1 * mf);
     }
     c += (c0 * v[2]);
   }
