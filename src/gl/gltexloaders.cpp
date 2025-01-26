@@ -35,7 +35,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "message.h"
 #include "model/nifmodel.h"
 
-#include "dds.h"
 #include "libfo76utils/src/filebuf.hpp"
 #include "libfo76utils/src/pbr_lut.hpp"
 #include "libfo76utils/src/sfcube2.hpp"
@@ -52,6 +51,7 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <QString>
 #include <QtEndian>
 
+#include "dds.h"
 
 /*! @file gltexloaders.cpp
  * @brief Texture loading functions.
@@ -1726,10 +1726,12 @@ bool TexCache::texSaveNIF( NifModel * nif, const QString & filepath, QModelIndex
 	// If DDS raw, DXT1 or DXT5, copy directly from texture
 	//qDebug() << "texSaveNIF: saving" << filepath << "to" << iData;
 
-	QFile f( filepath );
-
-	if ( !f.open( QIODevice::ReadOnly ) )
+	QByteArray	fileData;
+	if ( !nif->getResourceFile( fileData, filepath, "textures/", nullptr ) )
 		throw QString( "could not open file" );
+
+	QBuffer	f( &fileData );
+	f.open( QIODevice::ReadOnly );
 
 	if ( filepath.endsWith( ".nif", Qt::CaseInsensitive ) || filepath.endsWith( ".texcache", Qt::CaseInsensitive ) ) {
 		// NIF-to-NIF copy

@@ -44,9 +44,6 @@ THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 //! @file glview.h GLView
 
 class NifSkope;
-
-class QOpenGLContext;
-class QOpenGLFunctions;
 class QTimer;
 
 
@@ -62,8 +59,7 @@ public:
 	~GLView();
 	QWidget * createWindowContainer( QWidget * parent );
 
-	QOpenGLContext * glContext = nullptr;
-	QOpenGLFunctions * glFuncs = nullptr;
+	NifSkopeOpenGLContext * glContext = nullptr;
 
 	float	brightnessScale = 1.0f;		// overall brightness
 	float	ambient = 1.0f;				// environment map / ambient light level
@@ -182,8 +178,6 @@ signals:
 	void sequencesDisabled( bool );
 
 protected:
-	inline QOpenGLContext * pushGLContext();
-	inline void popGLContext( QOpenGLContext * prvContext );
 	//! Sets up the OpenGL rendering context, defines display lists, etc.
 	void initializeGL() override final;
 	//! Sets up the OpenGL viewport, projection, etc.
@@ -319,7 +313,13 @@ public:
 		isDisabled = n;
 	}
 
+	inline QOpenGLContext * pushGLContext();
+	inline void popGLContext( QOpenGLContext * prvContext );
 	static const char * getGLErrorString( int err );
+	inline TexCache * getTexCache()
+	{
+		return textures;
+	}
 
 private slots:
 	void advanceGears();
@@ -334,5 +334,21 @@ private:
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS( GLView::AnimationState )
+
+inline QOpenGLContext * GLView::pushGLContext()
+{
+	QOpenGLContext *	prvContext = QOpenGLContext::currentContext();
+	if ( context() != prvContext )
+		makeCurrent();
+	return prvContext;
+}
+
+inline void GLView::popGLContext( QOpenGLContext * prvContext )
+{
+	if ( !prvContext )
+		doneCurrent();
+	else if ( prvContext != context() )
+		prvContext->makeCurrent( prvContext->surface() );
+}
 
 #endif
