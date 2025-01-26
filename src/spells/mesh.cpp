@@ -555,13 +555,11 @@ public:
         if (nif->isArray(index)) {
             QVector<Triangle> tris = nif->getArray<Triangle>(index);
             for (int t = 0; t < tris.count(); t++) {
-                // Use the set method to reset all vertices to 0
                 tris[t].set(0, 0, 0);
             }
             nif->setArray<Triangle>(index, tris);
         } else {
             Triangle t = nif->get<Triangle>(index);
-            // Use the set method to reset all vertices to 0
             t.set(0, 0, 0);
             nif->set<Triangle>(index, t);
         }
