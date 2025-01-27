@@ -30,7 +30,7 @@ vec4 boneWeightsColor()
 	vec4	vcSum = vec4( 0.0 );
 	float	wSum = 0.0;
 	for ( int i = 0; i < 8; i++ ) {
-		float	w = boneWeights[i];
+		float	w = boneWeights[i >> 2][i & 3];
 		if ( !( w > 0.0 ) )
 			break;
 		int	b = int( w );
@@ -60,7 +60,7 @@ void main()
 
 	vec4	v = vec4( vertexPosition, 1.0 );
 
-	if ( boneWeights[0] > 0.0 ) {
+	if ( boneWeights[0].x > 0.0 ) {
 		if ( doSkinning )
 			boneTransform( v );
 		if ( ( selectionFlags & 8 ) != 0 )
