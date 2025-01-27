@@ -63,8 +63,6 @@ void main()
 
 	vec3 normal = normalize( N );
 
-	vec3 R = reflect( -L, normal );
-	vec3 H = normalize( L + E );
 	float NdotL = max( dot(normal, L), 0.0 );
 
 	if ( ( vertexColorFlags & 0x28 ) == 0x28 ) {
@@ -125,13 +123,16 @@ void main()
 	}
 
 	// Specular
+#if 0
 	if ( NdotL > 0.0 ) {
+		vec3 H = normalize( L + E );
 		float NdotH = dot( normal, H );
 		if ( NdotH > 0.0 ) {
 			vec3 spec = frontMaterialSpecular.rgb * pow( NdotH, frontMaterialShininess );
 			color.rgb += spec * frontMaterialSpecular.a;
 		}
 	}
+#endif
 
 	if ( alphaTestFunc > 0 ) {
 		if ( color.a < alphaThreshold && alphaTestFunc != 1 && alphaTestFunc != 3 && alphaTestFunc != 5 )
