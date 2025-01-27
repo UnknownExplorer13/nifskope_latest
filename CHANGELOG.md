@@ -12,6 +12,7 @@
 * The Transform/Edit spell has been changed to use a non-modal window.
 * Improved rendering of bounding spheres.
 * Added very limited support for Starfield skinning.
+* New spell to optimize the order of triangles, using meshopt\_optimizeVertexCache().
 * Stripifying triangles is implemented with meshoptimizer instead of NvTriStrip.
 * Fixed issues https://github.com/hexabits/nifskope/issues/94 and https://github.com/niftools/nifskope/issues/239.
 * Fixed bugs in selecting furniture markers, and setting the OpenGL context when saving screenshots.

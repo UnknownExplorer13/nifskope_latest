@@ -46,11 +46,13 @@ static QModelIndex getTriShapeData( const NifModel * nif, const QModelIndex & in
 {
 	QModelIndex iData = nif->getBlockIndex( index );
 
+	if ( nif->isNiBlock( iData, "NiTriShapeData" )
+		|| ( nif->blockInherits( iData, "BSTriShape" ) && nif->getIndex( iData, "Triangles" ).isValid() ) ) {
+		return iData;
+	}
+
 	if ( nif->isNiBlock( index, { "NiTriShape", "BSLODTriShape" } ) )
 		iData = nif->getBlockIndex( nif->getLink( index, "Data" ) );
-
-	if ( nif->isNiBlock( iData, "NiTriShapeData" ) )
-		return iData;
 
 	return QModelIndex();
 }
@@ -540,22 +542,23 @@ public:
 REGISTER_SPELL( spFlipFace )
 
 //! Flips all faces of a triangle based mesh
-class spFlipAllFaces final : public Spell
+class spFlipAllFaces : public Spell
 {
 public:
-	QString name() const override final { return Spell::tr( "Flip Faces" ); }
-	QString page() const override final { return Spell::tr( "Mesh" ); }
+	QString name() const override { return Spell::tr( "Flip Faces" ); }
+	QString page() const override { return Spell::tr( "Mesh" ); }
 
-	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
+	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
 			return true;
 		return getTriShapeData( nif, index ).isValid();
 	}
 
-	static void cast_Starfield( NifModel * nif, const QModelIndex & index );
+	virtual void processTriangles( QVector<Triangle> & tris );
+	void cast_Starfield( NifModel * nif, const QModelIndex & index );
 
-	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override final
+	QModelIndex cast( NifModel * nif, const QModelIndex & index ) override
 	{
 		if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) ) {
 			if ( nif->checkInternalGeometry( index ) )
@@ -566,14 +569,21 @@ public:
 
 		QVector<Triangle> tris = nif->getArray<Triangle>( iData, "Triangles" );
 
-		for ( int t = 0; t < tris.count(); t++ )
-			tris[t].flip();
+		processTriangles( tris );
 
 		nif->setArray<Triangle>( iData, "Triangles", tris );
 
 		return index;
 	}
 };
+
+void spFlipAllFaces::processTriangles( QVector<Triangle> & tris )
+{
+	Triangle *	t = tris.data();
+	qsizetype	n = tris.size();
+	for ( ; n > 0; t++, n-- )
+		t->flip();
+}
 
 void spFlipAllFaces::cast_Starfield( NifModel * nif, const QModelIndex & index )
 {
@@ -620,13 +630,48 @@ void spFlipAllFaces::cast_Starfield( NifModel * nif, const QModelIndex & index )
 			continue;
 
 		QVector<Triangle> tris = nif->getArray<Triangle>( trianglesIndex );
-		for ( auto & t : tris )
-			t.flip();
+
+		processTriangles( tris );
+
 		nif->setArray<Triangle>( trianglesIndex, tris );
 	}
 }
 
 REGISTER_SPELL( spFlipAllFaces )
+
+//! Reorders triangles to optimize GPU vertex shader invocations
+class spOptimizeVertexCache final : public spFlipAllFaces
+{
+public:
+	QString name() const override final { return Spell::tr( "Optimize Indices" ); }
+	QString page() const override final { return Spell::tr( "Mesh" ); }
+
+	void processTriangles( QVector<Triangle> & tris ) override final;
+};
+
+void spOptimizeVertexCache::processTriangles( QVector<Triangle> & tris )
+{
+	qsizetype	numTriangles = tris.size();
+	if ( numTriangles < 1 )
+		return;
+	size_t	n = size_t( numTriangles ) * 3;
+	std::vector< unsigned int >	buf1( n );
+	std::vector< unsigned int >	buf2( n );
+	unsigned int	maxVertex = 0;
+	for ( qsizetype i = 0; i < numTriangles; i++ ) {
+		const Triangle &	t = tris.at( i );
+		unsigned int *	p = buf1.data() + ( i * 3 );
+		p[0] = t.v1();
+		p[1] = t.v2();
+		p[2] = t.v3();
+		maxVertex = std::max( std::max( maxVertex, p[0] ), std::max( p[1], p[2] ) );
+	}
+	meshopt_optimizeVertexCache( buf2.data(), buf1.data(), n, size_t( maxVertex ) + 1 );
+	for ( qsizetype i = 0; i < numTriangles; i++ )
+		tris[i] = Triangle( quint16(buf2[i * 3]), quint16(buf2[i * 3 + 1]), quint16(buf2[i * 3 + 2]) );
+}
+
+REGISTER_SPELL( spOptimizeVertexCache )
 
 //! Removes redundant triangles from a mesh
 class spPruneRedundantTriangles final : public Spell
@@ -638,8 +683,6 @@ public:
 	bool isApplicable( const NifModel * nif, const QModelIndex & index ) override final
 	{
 		if ( nif->getBSVersion() >= 170 && nif->isNiBlock( index, "BSGeometry" ) )
-			return true;
-		if ( nif->blockInherits( index, "BSTriShape" ) && nif->getIndex( index, "Triangles" ).isValid() )
 			return true;
 		return getTriShapeData( nif, index ).isValid();
 	}
@@ -665,12 +708,8 @@ public:
 			return index;
 		}
 
-		QModelIndex iData;
-		bool isBSTriShape = nif->blockInherits( index, "BSTriShape" );
-		if ( !isBSTriShape )
-			iData = getTriShapeData( nif, index );
-		else
-			iData = index;
+		QModelIndex iData = getTriShapeData( nif, index );
+
 		QList<Triangle> tris = nif->getArray<Triangle>( iData, "Triangles" ).toList();
 		int cnt = 0;
 
@@ -714,8 +753,8 @@ public:
 		if ( cnt > 0 ) {
 			Message::info( nullptr, Spell::tr( "Removed %1 triangles" ).arg( cnt ) );
 			nif->set<int>( iData, "Num Triangles", tris.count() );
-			if ( !isBSTriShape )
-				nif->set<int>( iData, "Num Triangle Points", tris.count() * 3 );
+			if ( auto iNumPoints = nif->getIndex( iData, "Num Triangle Points" ); iNumPoints.isValid() )
+				nif->set<int>( iNumPoints, tris.count() * 3 );
 			nif->updateArraySize( iData, "Triangles" );
 			nif->setArray<Triangle>( iData, "Triangles", tris.toVector() );
 		}
