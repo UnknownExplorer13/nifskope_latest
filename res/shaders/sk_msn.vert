@@ -26,7 +26,7 @@ void main()
 {
 	vec4	v = vec4( vertexPosition, 1.0 );
 
-	if ( boneWeights[0] > 0.0 && doSkinning )
+	if ( boneWeights[0].x > 0.0 && doSkinning )
 		boneTransform( v );
 
 	v = modelViewMatrix * v;

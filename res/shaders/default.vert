@@ -39,7 +39,7 @@ void main()
 	vec4	v = vec4( vertexPosition, 1.0 );
 	vec3	n = normalVector;
 
-	if ( boneWeights[0] > 0.0 && doSkinning )
+	if ( boneWeights[0].x > 0.0 && doSkinning )
 		boneTransform( v, n );
 
 	v = modelViewMatrix * v;

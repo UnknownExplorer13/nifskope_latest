@@ -643,7 +643,7 @@ void Mesh::updateData_NiTriShape( const NifModel * nif )
 
 QModelIndex Mesh::vertexAt( int idx ) const
 {
-	auto nif = NifModel::fromIndex( iBlock );
+	auto nif = scene->nifModel;
 	if ( !nif )
 		return QModelIndex();
 
@@ -653,9 +653,16 @@ QModelIndex Mesh::vertexAt( int idx ) const
 	return iVertex;
 }
 
-bool compareTriangles( const QPair<int, float> & tri1, const QPair<int, float> & tri2 )
+QModelIndex Mesh::triangleAt( int idx ) const
 {
-	return ( tri1.second < tri2.second );
+	auto nif = scene->nifModel;
+	if ( nif && iData.isValid() ) {
+		// TODO: implement support for triangle strips and skin partitions
+		auto iTriangleData = nif->getIndex( iData, "Triangles" );
+		if ( iTriangleData.isValid() && nif->isArray( iTriangleData ) )
+			return nif->getIndex( iTriangleData, idx );
+	}
+	return QModelIndex();
 }
 
 void Mesh::transformShapes()

@@ -3,6 +3,7 @@
 #include "filebuf.hpp"
 #include "fp32vec8.hpp"
 #include "pbr_lut.hpp"
+#include "gl/glcontext.hpp"
 
 #include <thread>
 
@@ -298,9 +299,9 @@ size_t SFCubeMapFilter::convertImage(
     cubeFilterTable = nullptr;
 
     int     threadCnt = int(std::thread::hardware_concurrency());
-    threadCnt = std::min< int >(std::max< int >(threadCnt, 1), 16);
-    std::thread *threads[16];
-    for (int i = 0; i < 16; i++)
+    threadCnt = std::min< int >(std::max< int >(threadCnt, 1), 24);
+    std::thread *threads[24];
+    for (int i = 0; i < 24; i++)
       threads[i] = nullptr;
     int     w = int(width);
     for (int m = 0; w > 0; m++, w = w >> 1)
@@ -383,7 +384,7 @@ size_t SFCubeMapFilter::convertImage(
       }
       catch (...)
       {
-        for (int i = 0; i < 16; i++)
+        for (int i = 0; i < 24; i++)
         {
           if (threads[i])
           {
@@ -429,27 +430,16 @@ size_t SFCubeMapCache::convertImage(
 {
   bool    isHDR = (bufSize >= 11 &&                     // "#?RADIAN"
                    FileBuffer::readUInt64Fast(buf) == 0x4E41494441523F23ULL);
-  std::uint32_t h1 = width | (importanceSampleCnt << 17);
+  std::uint64_t k = width | (importanceSampleCnt << 16);
   if (isHDR)
   {
-    hdrToneMap = std::min< int >(std::max< int >(hdrToneMap, 0), 16);
-    h1 = h1 | (std::uint32_t(hdrToneMap) << 12);
+    hdrToneMap = std::clamp< int >(hdrToneMap, 0, 16);
+    k = k | (std::uint64_t(hdrToneMap) << 32);
   }
-  std::uint32_t h2 = ~h1;
-  size_t  i = 0;
-  for ( ; (i + 16) <= bufSize; i = i + 16)
   {
-    std::uint64_t tmp1 = FileBuffer::readUInt64Fast(buf + i);
-    std::uint64_t tmp2 = FileBuffer::readUInt64Fast(buf + (i + 8));
-    hashFunctionCRC32C< std::uint64_t >(h1, tmp1);
-    hashFunctionCRC32C< std::uint64_t >(h2, tmp2);
+    NifSkopeOpenGLContext::ShapeDataHash  tmp(0, 0, bufSize, nullptr, buf);
+    k = k ^ tmp.h[0];
   }
-  for ( ; i < bufSize; i++)
-  {
-    std::uint32_t&  h = (!(i & 8) ? h1 : h2);
-    hashFunctionCRC32C< unsigned char >(h, buf[i]);
-  }
-  std::uint64_t k = (std::uint64_t(h2) << 32) | h1;
   std::vector< unsigned char >& v = cachedTextures[k];
   if (v.size() > 0)
   {
@@ -721,10 +711,10 @@ bool SFCubeMapCache::convertHDRToDDS(
     FloatVector4  c(b);
     int     e = int(b >> 24);
 #if defined(__i386__) || defined(__x86_64__) || defined(__x86_64)
-    e = std::min< int >(std::max< int >(e, 16), 240) - 9;
+    e = std::clamp< int >(e, 16, 240) - 9;
     c *= std::bit_cast< float >(std::uint32_t(e << 23));
 #else
-    e = std::min< int >(std::max< int >(e, 103), 165) - 103;
+    e = std::clamp< int >(e, 103, 165) - 103;
     c *= float(std::int64_t(1) << e) * float(0.5 / (65536.0 * 65536.0));
 #endif
     c[3] = 1.0f;
@@ -738,10 +728,10 @@ bool SFCubeMapCache::convertHDRToDDS(
   p = p + 148;
 
   int     threadCnt = int(std::thread::hardware_concurrency());
-  threadCnt = std::min< int >(threadCnt, std::min< int >(cubeWidth >> 3, 16));
+  threadCnt = std::min< int >(threadCnt, std::min< int >(cubeWidth >> 3, 24));
   threadCnt = std::max< int >(threadCnt, 1);
-  std::thread *threads[16];
-  for (int i = 0; i < 16; i++)
+  std::thread *threads[24];
+  for (int i = 0; i < 24; i++)
     threads[i] = nullptr;
   try
   {
@@ -763,7 +753,7 @@ bool SFCubeMapCache::convertHDRToDDS(
   }
   catch (...)
   {
-    for (int i = 0; i < 16; i++)
+    for (int i = 0; i < 24; i++)
     {
       if (threads[i])
       {

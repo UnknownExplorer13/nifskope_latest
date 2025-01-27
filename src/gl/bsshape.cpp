@@ -208,7 +208,22 @@ QModelIndex BSShape::triangleAt( int idx ) const
 
 	auto blk = iBlock;
 	if ( iSkinPart.isValid() ) {
-		// TODO: Triangles are on NiSkinPartition in version 100
+		// Triangles are on NiSkinPartition in version 100
+		auto iPartitions = nif->getIndex( iSkinPart, "Partitions" );
+		if ( iPartitions.isValid() && nif->isArray( iPartitions ) ) {
+			for ( int i = 0; i < nif->rowCount( iPartitions ); i++ ) {
+				auto iPart = nif->getIndex( iPartitions, i );
+				if ( !iPart.isValid() )
+					continue;
+				auto iTriangles = nif->getIndex( iPart, "Triangles" );
+				if ( !( iTriangles.isValid() && nif->isArray( iTriangles ) ) )
+					continue;
+				int n = nif->rowCount( iTriangles );
+				if ( idx < n )
+					return nif->getIndex( iTriangles, idx );
+				idx -= n;
+			}
+		}
 		return QModelIndex();
 	}
 
@@ -482,8 +497,16 @@ void BSShape::drawSelection() const
 	// Draw Triangles
 	if ( n == "Triangles" ) {
 		int s = -1;
-		if ( n == p )
+		if ( n == p ) {
 			s = idx.row();
+			if ( iSkinPart.isValid() ) {
+				int i = idx.parent().parent().row();
+				while ( i-- > 0 ) {
+					if ( auto j = nif->getIndex( nif->getIndex( iSkinPart, "Partitions" ), i ); j.isValid() )
+						s += int( nif->get<quint32>( j, "Num Triangles" ) );
+				}
+			}
+		}
 		Shape::drawWireframe( scene->wireframeColor );
 		if ( s >= 0 && s < triangles.size() )
 			Shape::drawTriangles( s, 1, scene->highlightColor );
