@@ -61,13 +61,15 @@ public:
 
 	NifSkopeOpenGLContext * glContext = nullptr;
 
+	float	toneMapping = 0.23641851f;	// 0.05 to 1.0
 	float	brightnessScale = 1.0f;		// overall brightness
+	float	glowScale = 1.0f;
 	float	ambient = 1.0f;				// environment map / ambient light level
 	float	brightnessL = 1.0f;			// directional light intensity,
 	float	lightColor = 0.0f;			// and color temperature (-1.0 to 1.0)
-	float	toneMapping = 0.23641851f;	// 0.05 to 1.0
 	float	declination = 0.0f;
 	float	planarAngle = 0.0f;
+	float	envMapRotation = 0.0f;
 	bool	frontalLight = true;
 
 	enum AnimationStates
@@ -79,8 +81,6 @@ public:
 		AnimSwitch = 0x8
 	};
 	Q_DECLARE_FLAGS( AnimationState, AnimationStates );
-
-	AnimationState animState;
 
 	enum ViewState : unsigned char
 	{
@@ -139,7 +139,7 @@ public:
 	// older games: 64 units = 1 yard = 0.9144 m
 	float scale() { return (scene->nifModel && scene->nifModel->getBSVersion() >= 170) ? float(1.0 / 64.0) : 1.0f; };
 
-	QColor clearColor() const;
+	Color4 clearColor() const;
 
 
 	QModelIndex indexAt( const QPointF & p, bool shiftModifier = false );
@@ -156,8 +156,8 @@ public slots:
 	void setLightColor( int );
 	void setToneMapping( int );
 	void setAmbient( int );
-	void setDeclination( int );
-	void setPlanarAngle( int );
+	void setEnvMapRotation( int );
+	void setGlowScale( int );
 	void setFrontalLight( bool );
 	void updateScene();
 	void updateAnimationState( bool checked );
@@ -213,6 +213,9 @@ private:
 	ViewState view;
 	DebugMode debugMode;
 	bool perspectiveMode;
+	bool contextMenuShiftModifier;
+
+	AnimationState animState;
 
 	class TexCache * textures;
 
@@ -281,10 +284,10 @@ private:
 public:
 	struct Settings
 	{
-		QColor background;
-		float fov = 45.0;
-		float moveSpd = 350;
-		float rotSpd = 45;
+		Color4 background;
+		float fov = 60.0f;
+		float moveSpd = 350.0f;
+		float rotSpd = 45.0f;
 
 		UpAxis upAxis = ZAxis;
 		ViewState startupDirection = ViewFront;

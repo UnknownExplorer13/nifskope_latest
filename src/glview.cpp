@@ -94,7 +94,7 @@ GLView::GLView( QWindow * p )
 {
 	QSettings settings;
 	int	aa = settings.value( "Settings/Render/General/Msaa Samples", 2 ).toInt();
-	aa = std::min< int >( std::max< int >( aa, 0 ), 4 );
+	aa = std::clamp< int >( aa, 0, 4 );
 
 	QSurfaceFormat	fmt;
 
@@ -120,8 +120,10 @@ GLView::GLView( QWindow * p )
 	setFormat( fmt );
 
 	view = ViewDefault;
-	animState = AnimEnabled;
 	debugMode = DbgNone;
+	perspectiveMode = true;
+	contextMenuShiftModifier = false;
+	animState = AnimEnabled;
 
 	Zoom = 1.0;
 
@@ -157,7 +159,7 @@ GLView::GLView( QWindow * p )
 	connect(NifSkope::getOptions(), &SettingsDialog::update3D, [this]() {
 		// Calling update() here in a lambda can crash..
 		//updateSettings();
-		glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+		glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
 		//update();
 	});
 	connect(NifSkope::getOptions(), &SettingsDialog::update3D, this, static_cast<void (GLView::*)()>(&GLView::update));
@@ -207,18 +209,22 @@ void GLView::updateSettings()
 	QSettings settings;
 	settings.beginGroup( "Settings/Render" );
 
-	cfg.background = settings.value( "Colors/Background", QColor( 46, 46, 46 ) ).value<QColor>();
+	cfg.background = Color4( settings.value( "Colors/Background", QColor( 46, 46, 46 ) ).value<QColor>() );
 	cfg.fov = settings.value( "General/Camera/Field Of View" ).toFloat();
 	cfg.moveSpd = settings.value( "General/Camera/Movement Speed" ).toFloat();
 	cfg.rotSpd = settings.value( "General/Camera/Rotation Speed" ).toFloat();
 	cfg.upAxis = UpAxis(settings.value( "General/Up Axis", ZAxis ).toInt());
-	int	z = settings.value( "General/Camera/Startup Direction", 1 ).toInt();
+	int	z = settings.value( "Lighting/Declination", 0 ).toInt();
+	declination = float( z % 720 ) * 0.25f;		// Divide by 4 because sliders are -720 <-> 720
+	z = settings.value( "Lighting/Planar Angle", 0 ).toInt();
+	planarAngle = float( z % 720 ) * 0.25f;
+	z = settings.value( "General/Camera/Startup Direction", 1 ).toInt();
 	static const ViewState	startupDirections[6] = {
 		ViewLeft, ViewFront, ViewTop, ViewRight, ViewBack, ViewBottom
 	};
-	cfg.startupDirection = startupDirections[std::min< int >( std::max< int >( z, 0 ), 5 )];
+	cfg.startupDirection = startupDirections[std::clamp< int >( z, 0, 5 )];
 	z = settings.value( "General/Camera/Mwheel Zoom Speed", 8 ).toInt();
-	z = std::min< int >( std::max< int >( z, 0 ), 16 );
+	z = std::clamp< int >( z, 0, 16 );
 
 	settings.endGroup();
 
@@ -292,7 +298,7 @@ void GLView::selectPBRCubeMap()
 	}
 }
 
-QColor GLView::clearColor() const
+Color4 GLView::clearColor() const
 {
 	return cfg.background;
 }
@@ -421,7 +427,7 @@ void GLView::paintGL()
 	glDepthMask( GL_TRUE );
 
 	if ( isDisabled || !scene->haveRenderer() ) [[unlikely]] {
-		glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+		glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT );
 		return;
 	}
@@ -491,13 +497,14 @@ void GLView::paintGL()
 	// Setup projection mode
 	glProjection();
 
+	cx->setViewTransform( scene->view, int( cfg.upAxis ), envMapRotation );
 	auto &	globalUniforms = *( cx->globalUniforms );
 	globalUniforms.toneMapScale = toneMapping;
 	globalUniforms.brightnessScale = brightnessScale;
-	globalUniforms.glowScale = ( scene->hasOption(Scene::DoGlow) ? 1.0f : 0.0f );
+	globalUniforms.glowScale = ( scene->hasOption(Scene::DoGlow) ? glowScale : 0.0f );
 	FloatVector4	mat_amb( 0.0f );
 	FloatVector4	mat_diff( 0.0f );
-	Vector3	lightDir( 0.0f, 0.0f, 1.0f );
+	FloatVector4	lightDir( 0.0f, 0.0f, 1.0f, 0.0f );
 	bool	drawLightPos = false;
 
 	if ( scene->hasVisMode(Scene::VisSilhouette) ) {
@@ -507,11 +514,16 @@ void GLView::paintGL()
 		// Setup light
 
 		if ( !frontalLight ) {
-			float decl = deg2rad( declination );
 			Matrix m;
-			m.fromEuler( 0, 0, deg2rad( planarAngle ) );
-			lightDir = m * Vector3( std::sin( decl ), 0.0f, std::cos( decl ) );
-			globalUniforms.lightSourcePosition[0] = FloatVector4( viewTrans.rotation * lightDir );
+			m.fromEuler( deg2rad( declination ), 0.0f, deg2rad( planarAngle ) );
+			lightDir = FloatVector4::convertVector3( m.data() + 6 );
+			if ( cfg.upAxis == XAxis )
+				lightDir.shuffleValues( 0xD2 );
+			else if ( cfg.upAxis == YAxis )
+				lightDir.shuffleValues( 0xC9 );
+			globalUniforms.lightSourcePosition[0] = globalUniforms.viewMatrix[0] * lightDir[0];
+			globalUniforms.lightSourcePosition[0] += globalUniforms.viewMatrix[1] * lightDir[1];
+			globalUniforms.lightSourcePosition[0] += globalUniforms.viewMatrix[2] * lightDir[2];
 
 			drawLightPos = scene->hasVisMode( Scene::VisLightPos );
 		} else {
@@ -537,14 +549,10 @@ void GLView::paintGL()
 		mat_diff = c;
 
 	} else {
-		mat_amb = FloatVector4( 0.5f );
-		mat_diff = FloatVector4( 1.0f );
-		globalUniforms.toneMapScale = 1.0f;
-		globalUniforms.brightnessScale = 1.0f;
+		mat_amb = FloatVector4( 7.0f );
+		mat_diff = FloatVector4( 0.0f );
 	}
 
-	// in frontal light mode, planar angle controls environment map rotation around the Z axis
-	cx->setViewTransform( scene->view, int( cfg.upAxis ), ( frontalLight ? planarAngle : 0.0f ) );
 	globalUniforms.lightSourceAmbient = mat_amb;
 	globalUniforms.lightSourceDiffuse[0] = mat_diff;
 	globalUniforms.glowScaleSRGB = float( std::sqrt( globalUniforms.glowScale ) );
@@ -573,8 +581,8 @@ void GLView::paintGL()
 		scene->setGLColor( FloatVector4( 1.0f ) );
 		scene->setGLLineWidth( Settings::lineWidthAxes * 0.5f );
 		scene->loadModelViewMatrix( viewTrans );
-		scene->drawDashLine( Vector3(), lightDir, 30 );
-		scene->drawSphereSimple( lightDir, axis / 10.0f, 72, 6 );
+		scene->drawDashLine( Vector3(), Vector3( lightDir ), 30 );
+		scene->drawSphereSimple( Vector3( lightDir ), axis / 10.0f, 72, 6 );
 	}
 
 #ifndef QT_NO_DEBUG
@@ -692,8 +700,8 @@ void GLView::resizeGL( int width, int height )
 	else
 		scene->renderer->setViewport( 0, 0, width, height );
 
-	glDisable(GL_FRAMEBUFFER_SRGB);
-	glClearColor( cfg.background.redF(), cfg.background.greenF(), cfg.background.blueF(), cfg.background.alphaF() );
+	glDisable( GL_FRAMEBUFFER_SRGB );
+	glClearColor( cfg.background.red(), cfg.background.green(), cfg.background.blue(), cfg.background.alpha() );
 
 	popGLContext( prvContext );
 }
@@ -760,19 +768,15 @@ void GLView::setAmbient( int value )
 	update();
 }
 
-void GLView::setDeclination( int decl )
+void GLView::setEnvMapRotation( int angle )
 {
-	declination = float(decl) / 4; // Divide by 4 because sliders are -720 <-> 720
-	lightVisTimer->start( lightVisTimeout );
-	setVisMode( Scene::VisLightPos, true );
+	envMapRotation = float( angle ) * 0.25f;	// Divide by 4 because sliders are -720 <-> 720
 	update();
 }
 
-void GLView::setPlanarAngle( int angle )
+void GLView::setGlowScale( int value )
 {
-	planarAngle = float(angle) / 4; // Divide by 4 because sliders are -720 <-> 720
-	lightVisTimer->start( lightVisTimeout );
-	setVisMode( Scene::VisLightPos, true );
+	glowScale = convertBrightnessValue( value );
 	update();
 }
 
@@ -1406,7 +1410,7 @@ void GLView::saveImage()
 		QSettings settings;
 		jpegQuality = settings.value( "JPEG/Quality", 90 ).toInt();
 		imgFormat = settings.value( "Screenshot/Format", 0 ).toInt();
-		imgFormat = std::min< int >( std::max< int >( imgFormat, 0 ), 4 );
+		imgFormat = std::clamp< int >( imgFormat, 0, 4 );
 		imgPath = settings.value( "Screenshot/Folder", "screenshots" ).toString();
 	}
 
@@ -1557,7 +1561,7 @@ void GLView::saveImage()
 
 			QImage	rgbImg;
 			QImage	alphaImg;
-			const QColor & c = cfg.background;
+			const Color4 & c = cfg.background;
 			try {
 				for ( int i = 0; i <= int( useSilhouette ); i++ ) {
 					QOpenGLFramebufferObjectFormat fboFmt;
@@ -1572,7 +1576,7 @@ void GLView::saveImage()
 
 					if ( haveAlpha ) {
 						if ( !useSilhouette )
-							glClearColor( c.redF(), c.greenF(), c.blueF(), 0.0f );
+							glClearColor( c.red(), c.green(), c.blue(), 0.0f );
 						scene->options = savedSceneOptions & ~( Scene::ShowAxes | Scene::ShowGrid );
 						if ( i )
 							scene->visMode = Scene::VisSilhouette;
@@ -1590,7 +1594,7 @@ void GLView::saveImage()
 			// Restore settings and return viewport to original size
 			scene->options = savedSceneOptions;
 			scene->visMode = savedSceneVisMode;
-			glClearColor( c.redF(), c.greenF(), c.blueF(), c.alphaF() );
+			glClearColor( c.red(), c.green(), c.blue(), c.alpha() );
 			if ( ss > 1 )
 				resizeGL( int( p * w + 0.5 ), int( p * h + 0.5 ) );
 
@@ -1679,6 +1683,7 @@ void GLView::contextMenuEvent( QContextMenuEvent * e )
 {
 	if ( ( pressPos - lastPos ).manhattanLength() <= 10 ) {
 		mouseButtonState = 0;
+		contextMenuShiftModifier = bool( e->modifiers() & Qt::ShiftModifier );
 		emit graphicsView->customContextMenuRequested( e->pos() );
 		e->accept();
 	}
@@ -1892,10 +1897,19 @@ void GLView::mouseMoveEvent( QMouseEvent * event )
 	}
 
 	if ( ( buttonMask & Qt::LeftButton ) && !kbd( Key_MoveCam ) ) {
-		mouseRot += Vector3( dy * .5, 0, dx * .5 );
+		if ( !frontalLight && ( event->modifiers() & Qt::ShiftModifier ) ) {
+			declination += dy * 0.5f;
+			planarAngle -= dx * 0.5f;
+			declination -= float( roundFloat( declination / 360.0f ) ) * 360.0f;
+			planarAngle -= float( roundFloat( planarAngle / 360.0f ) ) * 360.0f;
+			lightVisTimer->start( lightVisTimeout );
+			setVisMode( Scene::VisLightPos, true );
+		} else {
+			mouseRot += Vector3( dy * 0.5f, 0.0f, dx * 0.5f );
+		}
 	} else if ( ( buttonMask & Qt::MiddleButton ) || ( ( buttonMask & Qt::LeftButton ) && kbd( Key_MoveCam ) ) ) {
 		float d = axis / (qMax( width(), height() ) + 1);
-		mouseMov += Vector3( dx * d, -dy * d, 0 );
+		mouseMov += Vector3( dx * d, -dy * d, 0.0f );
 	} else if ( buttonMask & Qt::RightButton ) {
 		setDistance( Dist - (dx + dy) * (axis / (qMax( width(), height() ) + 1)) );
 	}
