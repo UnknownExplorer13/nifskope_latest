@@ -17,7 +17,7 @@ macx: {
     ICON = res/nifskope.icns
 }
 
-QT += xml opengl network widgets openglwidgets core5compat
+QT += xml opengl network widgets openglwidgets
 
 # Require Qt 6.2 or higher
 contains(QT_VERSION, ^6\\.[0-1]\\..*) {
