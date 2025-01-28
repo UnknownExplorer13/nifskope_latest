@@ -237,7 +237,8 @@ public:
 							blk = NifBlockPtr( new NifBlock );
 
 						blk->id = id;
-						blk->abstract = (list.value( QLatin1StringView("abstract") ) == "1" || list.value( QLatin1StringView("abstract") ) == "true");
+						if ( auto v = list.value( QLatin1StringView("abstract") ); true )
+							blk->abstract = ( v == QLatin1StringView("1") || v == QLatin1StringView("true") );
 
 						if ( x == tagBlock ) {
 							blk->ancestor = list.value( QLatin1StringView("inherit") ).toString();
