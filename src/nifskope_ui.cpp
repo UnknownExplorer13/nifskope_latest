@@ -1360,7 +1360,7 @@ void NifSkope::contextMenu( const QPoint & pos )
 		idx = header->indexAt( pos );
 		p = header->mapToGlobal( pos );
 	} else if ( sender() == graphicsView ) {
-		idx = ogl->indexAt( pos );
+		idx = ogl->indexAt( pos, ogl->contextMenuShiftModifier );
 		p = graphicsView->mapToGlobal( pos );
 	} else {
 		return;
