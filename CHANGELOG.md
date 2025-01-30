@@ -1,5 +1,7 @@
  == CHANGELOG ==
 
+#### NifSkope-2.0.dev9-20250130
+
 * Reworked the renderer and UV editor to use OpenGL 4.2 or (on macOS) 4.1 core profile. The use of legacy (compatibility profile) functions has been removed. There is a new render setting for the size of mesh cache (vertex and element buffers), but the option to disable shaders has been removed.
 * Added support for Fallout 4 and 76 Havok material types, contributed by Jonathan Ostrus.
 * In object selection mode, triangles can be selected by shift-clicking. Note that this feature is not implemented yet for triangle strips.
