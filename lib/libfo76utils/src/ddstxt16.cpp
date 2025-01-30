@@ -1188,44 +1188,40 @@ FloatVector4 DDSTexture16::cubeMapImportanceSample(
     int     m0 = int(mipLevel);
     float   mf = float(m0);
     unsigned int  xMask = xMaskMip0 >> (unsigned char) m0;
-    float   w = float(int(xMask + 1U));
+    FloatVector4  w = FloatVector4(float(int(xMask + 1U)));
     FloatVector4  xyz = (t * v[0]) + (b * v[1]) + (n * v[2]);
     FloatVector4  xyzm(xyz);
     xyzm.absValues();
     unsigned int  m = xyz.getSignMask();
-    float   tmp = std::max(std::max(xyzm[0], xyzm[1]), xyzm[2]);
-    float   d = w / tmp;
-    size_t  i = 0;
-    FloatVector4  s(1.0f, -1.0f, 1.0f, -1.0f);
-    if (!(xyzm[0] < tmp))               // +X (0), -X (1)
+    FloatVector4  tmp(xyzm);
+    tmp.maxValues(FloatVector4(xyzm).shuffleValues(0xC9));
+    tmp.maxValues(FloatVector4(xyzm).shuffleValues(0xD2));
+    unsigned int  m2 = (xyzm - tmp).getSignMask();
+    float   d = w[0] / tmp[0];
+    size_t  i = m2 & 1U;
+    w = w * FloatVector4(0.5f, 0.5f, 0.25f, 0.25f) - 0.5f;
+    FloatVector4  s(0.5f, -0.5f, 0.25f, -0.25f);
+    if (!i)                             // +X (0), -X (1)
     {
-      if (m & 1U)
-        i = 1;
-      else
-        s.shuffleValues(0x55);
+      if (!(m & 1U))
+        s.shuffleValues(0xF5);
       xyz.shuffleValues(0x66);          // ZYZY
     }
-    else if (!(xyzm[1] < tmp))          // +Y (2), -Y (3)
+    else if (!(m2 & 2U))                // +Y (2), -Y (3)
     {
-      i = 2;
-      if (m & 2U)
-        i = 3;
-      else
-        s.shuffleValues(0x00);
+      if (!(m & 2U))
+        s.shuffleValues(0xA0);
       xyz.shuffleValues(0x88);          // XZXZ
     }
     else                                // +Z (4), -Z (5)
     {
-      i = 4;
+      i = 2;
       if (m & 4U)
-      {
-        s.shuffleValues(0x55);
-        i = 5;
-      }
+        s.shuffleValues(0xF5);
       xyz.shuffleValues(0x44);          // XYXY
     }
     xyz = xyz * s * d + w;
-    xyz = xyz * FloatVector4(0.5f, 0.5f, 0.25f, 0.25f) - 0.5f;
+    i = (i << 1) | ((m >> i) & 1U);
     FloatVector4  xy_f(xyz);
     xy_f.floorValues();
     std::int32_t  xy_i[4];
@@ -1235,12 +1231,12 @@ FloatVector4 DDSTexture16::cubeMapImportanceSample(
                                     textureDataSize, xy_f[0], xy_f[1], xMask));
     if (xMask && mf != mipLevel) [[likely]]
     {
-      mf -= mipLevel;
-      c0 += (c0 * mf);
+      mf = mipLevel - mf;
+      c0 -= (c0 * mf);
       FloatVector4  c1(getPixelB_Cube(textureData[m0 + 1], xy_i[2], xy_i[3], i,
                                       textureDataSize, xy_f[2], xy_f[3],
                                       xMask >> 1));
-      c0 -= (c1 * mf);
+      c0 += (c1 * mf);
     }
     c += (c0 * v[2]);
   }
