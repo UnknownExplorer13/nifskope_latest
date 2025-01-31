@@ -214,11 +214,7 @@ void GLView::updateSettings()
 	cfg.moveSpd = settings.value( "General/Camera/Movement Speed" ).toFloat();
 	cfg.rotSpd = settings.value( "General/Camera/Rotation Speed" ).toFloat();
 	cfg.upAxis = UpAxis(settings.value( "General/Up Axis", ZAxis ).toInt());
-	int	z = settings.value( "Lighting/Declination", 0 ).toInt();
-	declination = float( z % 720 ) * 0.25f;		// Divide by 4 because sliders are -720 <-> 720
-	z = settings.value( "Lighting/Planar Angle", 0 ).toInt();
-	planarAngle = float( z % 720 ) * 0.25f;
-	z = settings.value( "General/Camera/Startup Direction", 1 ).toInt();
+	int	z = settings.value( "General/Camera/Startup Direction", 1 ).toInt();
 	static const ViewState	startupDirections[6] = {
 		ViewLeft, ViewFront, ViewTop, ViewRight, ViewBack, ViewBottom
 	};

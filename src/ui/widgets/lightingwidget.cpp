@@ -59,6 +59,11 @@ LightingWidget::LightingWidget( GLView * ogl, QWidget * parent ) : QWidget(paren
 	tmp = settings.value( "Settings/Render/Lighting/Tone Mapping", POS ).toInt();
 	ui->sldToneMapping->setValue( std::clamp< int >( tmp, 0, BRIGHT ) );
 	ui->btnFrontal->setChecked( settings.value( "Settings/Render/Lighting/Frontal Light", true ).toBool() );
+
+	tmp = settings.value( "Lighting/Declination", 0 ).toInt();
+	ogl->declination = float( tmp % int(POS) ) * ( 180.0f / float(POS) );
+	tmp = settings.value( "Lighting/Planar Angle", 0 ).toInt();
+	ogl->planarAngle = float( tmp % int(POS) ) * ( 180.0f / float(POS) );
 }
 
 LightingWidget::~LightingWidget()
