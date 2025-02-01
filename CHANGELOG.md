@@ -1,5 +1,8 @@
  == CHANGELOG ==
 
+* Fixed the light direction being reset on changes to the render settings.
+* Fixed loading Fallout 76 and Starfield cube maps with legacy DDS header.
+
 #### NifSkope-2.0.dev9-20250130
 
 * Reworked the renderer and UV editor to use OpenGL 4.2 or (on macOS) 4.1 core profile. The use of legacy (compatibility profile) functions has been removed. There is a new render setting for the size of mesh cache (vertex and element buffers), but the option to disable shaders has been removed.

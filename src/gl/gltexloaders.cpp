@@ -936,11 +936,12 @@ GLuint TexCache::texLoadPBRCubeMap(
 			break;
 		}
 		if ( FileBuffer::readUInt32Fast( dataPtr ) == 0x20534444 ) {	// "DDS "
-			// DDSCAPS2_CUBEMAP, "DX10"
-			if ( (dataPtr[113] & 0x02) && FileBuffer::readUInt32Fast( dataPtr + 84 ) == 0x30315844 ) {
+			// DDSCAPS2_CUBEMAP
+			if ( dataPtr[113] & 0x02 ) {
 				// DXGI_FORMAT_R9G9B9E5_SHAREDEXP with mipmaps:
 				// assume the texture is already pre-filtered
-				filterDisabled = ( dataPtr[128] == 0x43 && dataPtr[28] >= 2 );
+				if ( FileBuffer::readUInt32Fast( dataPtr + 84 ) == 0x30315844 )	// "DX10"
+					filterDisabled = ( dataPtr[128] == 0x43 && dataPtr[28] >= 2 );
 				break;
 			}
 		}
