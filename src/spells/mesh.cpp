@@ -1513,19 +1513,69 @@ REGISTER_SPELL( spUpdateCenterRadius )
 
 //! spUpdateBounds: updates Bounds of BSTriShape or BSGeometry
 
-void spUpdateBounds::calculateSFBoneBounds(
-	NifModel * nif, const QPersistentModelIndex & iBoneList, int numBones, const MeshFile & meshFile )
+bool spUpdateBounds::calculateBoneBounds(
+	NifModel * nif, const QPersistentModelIndex & iBlock, const MeshFile * meshFile )
 {
+	QModelIndex	iBoneList;
+	QModelIndex	iSkinPartition;
+	int	numBones = 0;
+	if ( auto iSkin = nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ); iSkin.isValid() ) {
+		auto	iBoneData = nif->getBlockIndex( nif->getLink( iSkin, "Data" ) );
+		if ( iBoneData.isValid() ) {
+			iBoneList = nif->getIndex( iBoneData, "Bone List" );
+			if ( iBoneList.isValid() && nif->isArray( iBoneList ) )
+				numBones = nif->rowCount( iBoneList );
+		}
+		iSkinPartition = nif->getBlockIndex( nif->getLink( iSkin, "Skin Partition" ) );
+	}
+	if ( numBones < 1 )
+		return false;
+
 	std::map< int, std::vector< Vector3 > >	boneVertexMap;
-	for ( const auto & w : meshFile.weights ) {
-		qsizetype	i = qsizetype( &w - meshFile.weights.data() );
-		if ( i >= meshFile.positions.size() ) [[unlikely]]
-			break;
-		for ( const auto & b : w.weightsUNORM ) {
-			if ( (unsigned int) b.bone < (unsigned int) numBones && b.weight > 0.00005f )
-				boneVertexMap[int(b.bone)].push_back( meshFile.positions.at(i) );
+	if ( !meshFile ) {
+		QModelIndex	iVertexData;
+		if ( iSkinPartition.isValid() ) {
+			// using skin partition
+			iVertexData = nif->getIndex( iSkinPartition, "Vertex Data" );
+		} else {
+			iVertexData = nif->getIndex( iBlock, "Vertex Data" );
+		}
+		if ( iVertexData.isValid() && nif->isArray( iVertexData ) ) {
+			int	numVerts = nif->rowCount( iVertexData );
+			for ( int i = 0; i < numVerts; i++ ) {
+				auto	iVertex = nif->getIndex( iVertexData, i );
+				if ( !iVertex.isValid() )
+					continue;
+				Vector3	v = nif->get<Vector3>( iVertex, "Vertex" );
+				auto	iWeights = nif->getIndex( iVertex, "Bone Weights" );
+				auto	iIndices = nif->getIndex( iVertex, "Bone Indices" );
+				int	numWeights;
+				if ( !( iWeights.isValid() && iIndices.isValid() && ( numWeights = nif->rowCount( iWeights ) ) > 0 ) )
+					continue;
+				if ( nif->rowCount( iIndices ) != numWeights )
+					continue;
+				for ( int j = 0; j < numWeights; j++ ) {
+					float	w = nif->get<float>( nif->getIndex( iWeights, j ) );
+					int	b = nif->get<quint8>( nif->getIndex( iIndices, j ) );
+					if ( w > 0.00001f && b < numBones )
+						boneVertexMap[b].push_back( v );
+				}
+			}
+		}
+	} else {
+		for ( const auto & w : meshFile->weights ) {
+			qsizetype	i = qsizetype( &w - meshFile->weights.data() );
+			if ( i >= meshFile->positions.size() ) [[unlikely]]
+				break;
+			for ( const auto & b : w.weightsUNORM ) {
+				if ( (unsigned int) b.bone < (unsigned int) numBones && b.weight > 0.00005f )
+					boneVertexMap[int(b.bone)].push_back( meshFile->positions.at(i) );
+			}
 		}
 	}
+	if ( boneVertexMap.empty() )
+		return false;
+
 	for ( int i = 0; i < numBones; i++ ) {
 		auto	iBone = nif->getIndex( iBoneList, i );
 		if ( !iBone.isValid() )
@@ -1543,6 +1593,8 @@ void spUpdateBounds::calculateSFBoneBounds(
 		}
 		bounds.update( nif, iBone );
 	}
+
+	return true;
 }
 
 static void updateCullData( NifModel * nif, const QPersistentModelIndex & iMeshData, const MeshFile & meshFile )
@@ -1593,20 +1645,6 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 	BoundSphere	bounds;
 	FloatVector4	bndCenter( 0.0f );
 	FloatVector4	bndDims( -1.0f );
-	QModelIndex	iBoneList;
-	int	numBones = 0;
-	if ( auto iSkin = nif->getBlockIndex( nif->getLink( iBlock, "Skin" ) ); iSkin.isValid() ) {
-		bounds.center = Vector3( 0.0f, 0.0f, 0.0f );
-		bounds.radius = 0.0f;
-		bndCenter = FloatVector4( float(FLT_MAX) );
-		bndDims = FloatVector4( float(FLT_MAX) );
-		auto	iBoneData = nif->getBlockIndex( nif->getLink( iSkin, "Data" ) );
-		if ( iBoneData.isValid() ) {
-			iBoneList = nif->getIndex( iBoneData, "Bone List" );
-			if ( iBoneList.isValid() && nif->isArray( iBoneList ) )
-				numBones = nif->rowCount( iBoneList );
-		}
-	}
 	for ( int i = 0; i <= 3; i++ ) {
 		auto mesh = nif->getIndex( meshes, i );
 		if ( !mesh.isValid() )
@@ -1628,8 +1666,11 @@ QModelIndex spUpdateBounds::cast_Starfield( NifModel * nif, const QModelIndex & 
 		nif->set<quint32>( mesh, "Num Verts", numVerts );
 		// FIXME: mesh flags are not updated
 		if ( meshFile.isValid() && meshFile.positions.size() > 0 && !boundsCalculated ) {
-			if ( numBones > 0 ) {
-				calculateSFBoneBounds( nif, iBoneList, numBones, meshFile );
+			if ( calculateBoneBounds( nif, iBlock, &meshFile ) ) {
+				bounds.center = Vector3();
+				bounds.radius = 0.0f;
+				bndCenter = FloatVector4( float(FLT_MAX) );
+				bndDims = FloatVector4( float(FLT_MAX) );
 			} else {
 				// Creating a bounding sphere and bounding box from the verts
 				bounds = BoundSphere( meshFile.positions, true );
@@ -1656,27 +1697,35 @@ QModelIndex spUpdateBounds::cast( NifModel * nif, const QModelIndex & index )
 	if ( nif->getBSVersion() >= 170 && nif->blockInherits( index, "BSGeometry" ) )
 		return cast_Starfield( nif, index );
 
-	auto vertData = nif->getIndex( index, "Vertex Data" );
+	auto	iBlock = nif->getBlockIndex( index );
+	BoundSphere	bounds( Vector3(), 0.0f );
+	FloatVector4	bndCenter( float(FLT_MAX) );
+	FloatVector4	bndDims( float(FLT_MAX) );
 
-	// Retrieve the verts
-	QVector<Vector3> verts;
-	for ( int i = 0; i < nif->rowCount( vertData ); i++ ) {
-		verts << nif->get<Vector3>( nif->getIndex( vertData, i ), "Vertex" );
+	if ( !calculateBoneBounds( nif, iBlock ) ) {
+		auto vertData = nif->getIndex( iBlock, "Vertex Data" );
+
+		// Retrieve the verts
+		QVector<Vector3> verts;
+		for ( int i = 0; i < nif->rowCount( vertData ); i++ ) {
+			verts << nif->get<Vector3>( nif->getIndex( vertData, i ), "Vertex" );
+		}
+
+		if ( verts.isEmpty() )
+			return index;
+
+		// Creating a bounding sphere from the verts
+		bounds = BoundSphere( verts, true );
+
+		if ( nif->getBSVersion() >= 151 ) {
+			// Fallout 76: update bounding box
+			calculateBoundingBox( bndCenter, bndDims, verts );
+		}
 	}
 
-	if ( verts.isEmpty() )
-		return index;
-
-	// Creating a bounding sphere from the verts
-	BoundSphere bounds = BoundSphere( verts, true );
-	bounds.update( nif, index );
-
-	if ( nif->getBSVersion() >= 151 ) {
-		// Fallout 76: update bounding box
-		FloatVector4	bndCenter, bndDims;
-		calculateBoundingBox( bndCenter, bndDims, verts );
-		setBoundingBox( nif, index, bndCenter, bndDims );
-	}
+	bounds.update( nif, iBlock );
+	if ( nif->getBSVersion() >= 151 )
+		setBoundingBox( nif, iBlock, bndCenter, bndDims );
 
 	return index;
 }
@@ -1695,7 +1744,7 @@ public:
 		if ( !nif || idx.isValid() )
 			return false;
 
-		return ( nif->getBSVersion() >= 130 );
+		return ( nif->getBSVersion() >= 100 );
 	}
 
 	QModelIndex cast( NifModel * nif, const QModelIndex & ) override final

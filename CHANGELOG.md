@@ -1,5 +1,6 @@
  == CHANGELOG ==
 
+* Updating bounds has been implemented for skinned BSTriShape meshes, and 'Update All Bounds' is now applicable to Skyrim Special Edition NIFs.
 * Fixed the light direction being reset on changes to the render settings.
 * Fixed loading Fallout 76 and Starfield cube maps with legacy DDS header.
 
