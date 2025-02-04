@@ -1174,6 +1174,12 @@ FloatVector4 DDSTexture16::cubeMap(float x, float y, float z,
   return c0;
 }
 
+#if ENABLE_GCC_SIMD_32
+using FloatVecType = FloatVector8;
+#else
+using FloatVecType = FloatVector4;
+#endif
+
 FloatVector4 DDSTexture16::cubeMapImportanceSample(
     FloatVector4 t, FloatVector4 b, FloatVector4 n,
     const FloatVector4 *sampleBuf, size_t sampleCnt) const
@@ -1181,66 +1187,106 @@ FloatVector4 DDSTexture16::cubeMapImportanceSample(
   if (!(channelCntFlags & 0x80)) [[unlikely]]
     return cubeMap(n[0], n[1], n[2], 0.0f);
   FloatVector4  c(0.0f);
-  do
+#if ENABLE_GCC_SIMD_32
+  constexpr size_t  k = 8;
+#else
+  constexpr size_t  k = 4;
+#endif
+  FloatVecType  xf0, yf0, xf1, yf1;
+  std::int32_t  xi0[k], yi0[k], xi1[k], yi1[k], i[k];
+  std::int32_t  m0[k], xMask[k];
+  FloatVecType  mf, w;
+  for (size_t j = 0; true; j = (j + 1) & (k - 1))
   {
-    FloatVector4  v = *(sampleBuf++);
-    float   mipLevel = v[3];
-    int     m0 = int(mipLevel);
-    float   mf = float(m0);
-    unsigned int  xMask = xMaskMip0 >> (unsigned char) m0;
-    FloatVector4  w = FloatVector4(float(int(xMask + 1U)));
-    FloatVector4  xyz = (t * v[0]) + (b * v[1]) + (n * v[2]);
-    FloatVector4  xyzm(xyz);
-    xyzm.absValues();
-    unsigned int  m = xyz.getSignMask();
-    FloatVector4  tmp(xyzm);
-    tmp.maxValues(FloatVector4(xyzm).shuffleValues(0xC9));
-    tmp.maxValues(FloatVector4(xyzm).shuffleValues(0xD2));
-    unsigned int  m2 = (xyzm - tmp).getSignMask();
-    float   d = w[0] / tmp[0];
-    size_t  i = m2 & 1U;
-    w = w * FloatVector4(0.5f, 0.5f, 0.25f, 0.25f) - 0.5f;
-    FloatVector4  s(0.5f, -0.5f, 0.25f, -0.25f);
-    if (!i)                             // +X (0), -X (1)
+    if (!j)
     {
-      if (!(m & 1U))
-        s.shuffleValues(0xF5);
-      xyz.shuffleValues(0x66);          // ZYZY
+      if (sampleCnt < k)
+        break;
+      sampleCnt = sampleCnt - k;
+#if ENABLE_GCC_SIMD_32
+      FloatVecType  xTmp(sampleBuf[0], sampleBuf[4]);
+      FloatVecType  yTmp(sampleBuf[1], sampleBuf[5]);
+      FloatVecType  zTmp(sampleBuf[2], sampleBuf[6]);
+      FloatVecType  mipLevel(sampleBuf[3], sampleBuf[7]);
+#else
+      FloatVecType  xTmp(sampleBuf[0]);
+      FloatVecType  yTmp(sampleBuf[1]);
+      FloatVecType  zTmp(sampleBuf[2]);
+      FloatVecType  mipLevel(sampleBuf[3]);
+#endif
+      sampleBuf = sampleBuf + k;
+      w = zTmp;
+      mf = mipLevel;
+      mipLevel.floorValues().convertToInt32(m0);
+      mf -= mipLevel;
+      xMask[0] = std::int32_t(xMaskMip0 >> (unsigned char) m0[0]);
+      xMask[1] = std::int32_t(xMaskMip0 >> (unsigned char) m0[1]);
+      xMask[2] = std::int32_t(xMaskMip0 >> (unsigned char) m0[2]);
+      xMask[3] = std::int32_t(xMaskMip0 >> (unsigned char) m0[3]);
+#if ENABLE_GCC_SIMD_32
+      xMask[4] = std::int32_t(xMaskMip0 >> (unsigned char) m0[4]);
+      xMask[5] = std::int32_t(xMaskMip0 >> (unsigned char) m0[5]);
+      xMask[6] = std::int32_t(xMaskMip0 >> (unsigned char) m0[6]);
+      xMask[7] = std::int32_t(xMaskMip0 >> (unsigned char) m0[7]);
+      FloatVecType  wTmp = FloatVecType(xMask) * 0.5f;
+#else
+      FloatVecType  wTmp = FloatVecType::convertInt32(xMask) * 0.5f;
+#endif
+      FloatVecType  x = (xTmp * t[0]) + (yTmp * b[0]) + (zTmp * n[0]);
+      FloatVecType  y = (xTmp * t[1]) + (yTmp * b[1]) + (zTmp * n[1]);
+      FloatVecType  z = (xTmp * t[2]) + (yTmp * b[2]) + (zTmp * n[2]);
+      xTmp = FloatVecType(x).absValues();
+      yTmp = FloatVecType(y).absValues();
+      zTmp = FloatVecType(z).absValues();
+      FloatVecType  mTmp = FloatVecType(xTmp).maxValues(yTmp).maxValues(zTmp);
+      FloatVecType  d = (wTmp + 0.5f) / mTmp;
+      // -1 if face >= 2
+      xTmp = FloatVecType(1.0f).blendValues(FloatVecType(-1.0f), xTmp - mTmp);
+      // -1 if face 2 or 3
+      yTmp = FloatVecType(xTmp).blendValues(FloatVecType(1.0f), yTmp - mTmp);
+      // face 0, 1: X = -z / x,      Y = -y / abs(x)
+      // face 2, 3: X =  x / abs(y), Y =  z / y
+      // face 4, 5: X =  x / z,      Y = -y / abs(z)
+      FloatVecType  f0(0.0f);
+      f0.blendValues(FloatVecType(4.0f), xTmp);
+      f0.blendValues(FloatVecType(2.0f), yTmp);
+      // f0 = face & ~1, f1 = 1 - (face & 1) * 2
+      FloatVecType  f1(x);
+      f1.blendValues(z, xTmp).blendValues(y, yTmp);
+      f1 = FloatVecType(1.0f).blendValues(FloatVecType(-1.0f), f1);
+      xf0 = (z * -1.0f).blendValues(x, xTmp) * f1;
+      yf0 = (y * -1.0f).blendValues(z * f1, yTmp);
+      xf0.blendValues(x, yTmp);
+      f0.blendValues(f0 + 1.0f, f1).convertToInt32(i);
+      xf0 = xf0 * d + wTmp;
+      yf0 = yf0 * d + wTmp;
+      xf1 = xf0 * 0.5f - 0.25f;
+      yf1 = yf0 * 0.5f - 0.25f;
+      xTmp = FloatVecType(xf0).floorValues();
+      yTmp = FloatVecType(yf0).floorValues();
+      xTmp.convertToInt32(xi0);
+      yTmp.convertToInt32(yi0);
+      xf0 -= xTmp;
+      yf0 -= yTmp;
+      xTmp = FloatVecType(xf1).floorValues();
+      yTmp = FloatVecType(yf1).floorValues();
+      xTmp.convertToInt32(xi1);
+      yTmp.convertToInt32(yi1);
+      xf1 -= xTmp;
+      yf1 -= yTmp;
     }
-    else if (!(m2 & 2U))                // +Y (2), -Y (3)
+    FloatVector4  c0(getPixelB_Cube(textureData[m0[j]], xi0[j], yi0[j], i[j],
+                                    textureDataSize, xf0[j], yf0[j], xMask[j]));
+    if (xMask[j] && mf[j] > 0.0f) [[likely]]
     {
-      if (!(m & 2U))
-        s.shuffleValues(0xA0);
-      xyz.shuffleValues(0x88);          // XZXZ
+      c0 -= (c0 * mf[j]);
+      FloatVector4  c1(getPixelB_Cube(textureData[m0[j] + 1], xi1[j], yi1[j],
+                                      i[j], textureDataSize, xf1[j], yf1[j],
+                                      xMask[j] >> 1));
+      c0 += (c1 * mf[j]);
     }
-    else                                // +Z (4), -Z (5)
-    {
-      i = 2;
-      if (m & 4U)
-        s.shuffleValues(0xF5);
-      xyz.shuffleValues(0x44);          // XYXY
-    }
-    xyz = xyz * s * d + w;
-    i = (i << 1) | ((m >> i) & 1U);
-    FloatVector4  xy_f(xyz);
-    xy_f.floorValues();
-    std::int32_t  xy_i[4];
-    xy_f.convertToInt32(xy_i);
-    xy_f = xyz - xy_f;
-    FloatVector4  c0(getPixelB_Cube(textureData[m0], xy_i[0], xy_i[1], i,
-                                    textureDataSize, xy_f[0], xy_f[1], xMask));
-    if (xMask && mf != mipLevel) [[likely]]
-    {
-      mf = mipLevel - mf;
-      c0 -= (c0 * mf);
-      FloatVector4  c1(getPixelB_Cube(textureData[m0 + 1], xy_i[2], xy_i[3], i,
-                                      textureDataSize, xy_f[2], xy_f[3],
-                                      xMask >> 1));
-      c0 += (c1 * mf);
-    }
-    c += (c0 * v[2]);
+    c += (c0 * w[j]);
   }
-  while (--sampleCnt);
   return c;
 }
 

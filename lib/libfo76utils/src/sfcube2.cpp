@@ -329,8 +329,7 @@ size_t SFCubeMapFilter::convertImage(
       {
         int     n = int(importanceSampleCnt);
         importanceSampleTable = &importanceSampleBuf;
-        importanceSampleBuf.clear();
-        importanceSampleBuf.reserve(size_t(n));
+        importanceSampleBuf.resize(size_t(n));
         float   a = roughness * roughness;
         float   a2 = a * a;
         filterParam = 0.0f;
@@ -341,8 +340,16 @@ size_t SFCubeMapFilter::convertImage(
           float   nDotH = h[2];
           FloatVector4  l(h * (nDotH * 2.0f)    // L = reflect(-N, H)
                           - FloatVector4(0.0f, 0.0f, 1.0f, 0.0f));
-          if (!(l[2] > 0.0f))
+          float   *bufp = &(importanceSampleBuf.data()[i & ~3][i & 3]);
+          bufp[0] = l[0];
+          bufp[4] = l[1];
+          if (!(l[2] > 0.0f)) [[unlikely]]
+          {
+            bufp[8] = 0.0f;
+            bufp[12] = 16.0f;
             continue;
+          }
+          bufp[8] = l[2];
           filterParam += l[2];
           // calculate mip level, based on formula from
           // https://chetanjags.wordpress.com/2015/08/26/image-based-lighting/
@@ -351,8 +358,7 @@ size_t SFCubeMapFilter::convertImage(
           float   mipLevel =            // mip bias = +1.0
               float(std::log2(float(t.getWidth()) * float(t.getWidth())
                               / (float(n) * d))) * 0.5f + 2.29248125f;
-          l[3] = std::min(std::max(mipLevel, 0.0f), 16.0f);
-          importanceSampleBuf.push_back(l);
+          bufp[12] = std::min(std::max(mipLevel, 0.0f), 16.0f);
         }
         filterParam = normalizeScale / filterParam;
       }
